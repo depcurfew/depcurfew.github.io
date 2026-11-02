@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>About depcurfew · depcurfew</title>
+<meta name="description" content="One supply-chain security policy for npm, pnpm, Yarn, Bun, Deno, uv, pip, Poetry, PDM, Pipenv, Composer, Renovate and Dependabot, plus a doctor that finds config that silently does nothing.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header class="site">
+<div class="bar">
+<a class="brand" href="index.html"><img src="favicon.svg" alt="" width="20" height="20">depcurfew</a>
+<nav aria-label="Pages">
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="npm.html">JavaScript</a></li>
+<li><a href="python.html">Python</a></li>
+<li><a href="php.html">PHP</a></li>
+<li><a href="bots.html">Bots</a></li>
+<li><a href="policy.html">Policy</a></li>
+<li><a href="commands.html">Commands</a></li>
+<li><a href="codes.html">Codes</a></li>
+<li><a href="doctor.html">doctor rules</a></li>
+<li><a href="machine.html">Whole machine</a></li>
+<li><a href="tools.html">Tools</a></li>
+<li><a href="action.html">GitHub Action</a></li>
+<li><a href="check.html">Guarding installs</a></li>
+<li><a href="claude-code.html">Claude Code</a></li>
+<li><a href="mcp.html">MCP server</a></li>
+<li><a href="knowledge.html">Knowledge base</a></li>
+<li><a href="about.html" aria-current="page">About</a></li>
+<li><a href="versions.html">Versions</a></li>
+</ul>
+</nav>
+</div>
+</header>
+<main id="content">
+<h1 id="about-depcurfew">About depcurfew</h1>
+<h2 id="what-depcurfew-does-not-do">What depcurfew does not do</h2>
+<p>depcurfew makes the package managers&#39; own protections work and checks a package&#39;s age, name, install scripts and source before it is installed. It has no malware database of its own and does not scan package contents, so by default a malicious version older than the cooldown passes. With <code>--osv</code> (<code>check</code>, the Claude Code hook, <code>depcurfew mcp</code>, <code>doctor</code> and the input <code>osv</code> of the Action) it asks OSV.dev about the versions it checks and blocks those with a record of the OpenSSF malicious-packages database, but that catches only malware someone has found and reported, and the database admits false positives: see <a href="check.html#known-malicious-versions-osv">Known malicious versions</a>. Keep <code>npm audit</code> or an equivalent for known vulnerabilities, which <code>--osv</code> does not report. depcurfew also does not run or sandbox anything: the protection comes from the configuration the package managers read.</p>
+<h2 id="network-and-privacy">Network and privacy</h2>
+<p>Only <code>check</code>, the Claude Code hook and the <code>check_packages</code> tool of <code>depcurfew mcp</code> use the network, and <code>doctor</code> and the GitHub Action only with <code>--osv</code> (input <code>osv: true</code>), for OSV.dev alone. For each package the first three request one URL with the package name in it: from the public npm registry (<code>registry.npmjs.org</code>), PyPI (<code>pypi.org</code>) or Packagist (<code>repo.packagist.org</code>), or from the registry that the project&#39;s or your <code>.npmrc</code> sets, <code>--registry</code> or <code>--index</code>. They send no credentials (tokens in <code>.npmrc</code> are not read, and a user name and password written into a registry URL are removed before the request and in every message) and nothing else about the project, and depcurfew has no telemetry. A private package whose scope has no registry in an <code>.npmrc</code> that npm reads is looked up in the public registry, so its name reaches that registry; set <code>@scope:registry</code> in <code>.npmrc</code> or pass <code>--registry</code> first. A package whose scope has a registry in an <code>.npmrc</code> that <code>check</code> does not take, or in <code>.yarnrc.yml</code> or <code>bunfig.toml</code>, is not looked up, and neither is a Composer package when the root <code>composer.json</code> declares another repository or turns packagist.org off. With <code>--osv</code> they also send the name, ecosystem and version of each package to <code>api.osv.dev</code> in a batch query, and <code>doctor --osv</code> those of every locked package version, private packages included (see <a href="check.html#known-malicious-versions-osv">Known malicious versions</a>); without <code>--osv</code> nothing goes to OSV.dev. <code>init</code>, <code>explain</code>, <code>apply</code> and <code>doctor</code> without <code>--osv</code> work without network access. The GitHub Action checks the repository without it too, unless the input <code>osv</code> is <code>true</code>; afterwards it sends the result (the counts, the table of checks and findings, the files read) to the GitHub API of the run (<code>GITHUB_API_URL</code>) with the workflow token to create the depcurfew doctor check (input <code>check-run</code>), and the SARIF upload to code scanning is a separate step that runs GitHub&#39;s own action. An editor that reads the <code>$schema</code> of <code>depcurfew.json</code> may download the schema from unpkg.com.</p>
+<h2 id="library">Library</h2>
+<p>The same functions are available from the package: <code>detectProject</code>, <code>planApply</code> and <code>applyProject</code>, <code>runDoctor</code> with <code>toSarif</code> (and <code>runDoctorWithOsv</code>, <code>doctor --osv</code>), <code>checkSpecs</code> with <code>scanCommandLine</code>, <code>queryOsv</code>, and the policy parser and converters. Their types ship in <code>dist/index.d.ts</code>, and <a href="https://github.com/DevXord/depcurfew/blob/main/src/index.ts"><code>src/index.ts</code></a> lists every export. The package is an ES module only: use <code>import</code>; <code>require(&#39;depcurfew&#39;)</code> works on Node.js 22.12 and later, which load ES modules with <code>require()</code>.</p>
+<h2 id="contributing">Contributing</h2>
+<p>Facts about package managers live only in <a href="https://github.com/DevXord/depcurfew/tree/main/src/knowledge"><code>src/knowledge/</code></a>, each with the official URL it was verified against and the date. A correction is welcome with a link to the official documentation or changelog. <code>npm test</code> builds the project and runs every test without network access. <a href="https://github.com/DevXord/depcurfew/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> has the setup, the commands and the rules for changes, and the issue forms ask for what a report needs; vulnerabilities go through <a href="https://github.com/DevXord/depcurfew/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+<p><code>npm run site</code> builds the documentation site into <code>dist-site/</code> from this README, the knowledge base and <code>schema.json</code>, so its pages say what the README says; it uses relative links only and loads nothing from other hosts. <code>npm run site -- --versions</code> also reads the release tags with git and adds the README, knowledge base, changes and schema of every earlier release from 1.1.0 on under <code>/&lt;version&gt;/</code>, each page with a banner that names its version, and a Versions page. The site is published at <a href="https://depcurfew.github.io/">depcurfew.github.io</a> by the repository <a href="https://github.com/depcurfew/depcurfew.github.io">depcurfew/depcurfew.github.io</a>, which builds it from the latest release of this repository once a day (its files are in <a href="https://github.com/DevXord/depcurfew/tree/main/site/org-repo"><code>site/org-repo/</code></a>) and serves the schema at <a href="https://depcurfew.github.io/schema.json"><code>schema.json</code></a> and <a href="https://depcurfew.github.io/schema/v1.json"><code>schema/v1.json</code></a>.</p>
+<h2 id="license">License</h2>
+<p><a href="https://github.com/DevXord/depcurfew/blob/main/LICENSE">MIT</a></p>
+<h2 id="trademarks">Trademarks</h2>
+<p>npm is a registered trademark of npm, Inc. &quot;Python&quot; and &quot;PyPI&quot; are trademarks of the Python Software Foundation. pnpm, Yarn, Bun, Deno, uv, pip, Poetry, PDM, Pipenv, Composer, Packagist, Renovate, Dependabot, GitHub, Claude Code and the other names in this document belong to their owners. depcurfew is an independent project and is not affiliated with or endorsed by any of them.</p>
+</main>
+<footer class="site">
+<p>depcurfew 1.4.0 · built from README.md and src/knowledge/ with <code>npm run site</code> · <a href="https://github.com/DevXord/depcurfew">Source on GitHub</a> · MIT license</p>
+</footer>
+</body>
+</html>

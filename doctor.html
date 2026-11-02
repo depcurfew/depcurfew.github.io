@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>doctor rules · depcurfew</title>
+<meta name="description" content="One supply-chain security policy for npm, pnpm, Yarn, Bun, Deno, uv, pip, Poetry, PDM, Pipenv, Composer, Renovate and Dependabot, plus a doctor that finds config that silently does nothing.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header class="site">
+<div class="bar">
+<a class="brand" href="index.html"><img src="favicon.svg" alt="" width="20" height="20">depcurfew</a>
+<nav aria-label="Pages">
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="npm.html">JavaScript</a></li>
+<li><a href="python.html">Python</a></li>
+<li><a href="php.html">PHP</a></li>
+<li><a href="bots.html">Bots</a></li>
+<li><a href="policy.html">Policy</a></li>
+<li><a href="commands.html">Commands</a></li>
+<li><a href="codes.html">Codes</a></li>
+<li><a href="doctor.html" aria-current="page">doctor rules</a></li>
+<li><a href="machine.html">Whole machine</a></li>
+<li><a href="tools.html">Tools</a></li>
+<li><a href="action.html">GitHub Action</a></li>
+<li><a href="check.html">Guarding installs</a></li>
+<li><a href="claude-code.html">Claude Code</a></li>
+<li><a href="mcp.html">MCP server</a></li>
+<li><a href="knowledge.html">Knowledge base</a></li>
+<li><a href="about.html">About</a></li>
+<li><a href="versions.html">Versions</a></li>
+</ul>
+</nav>
+</div>
+</header>
+<main id="content">
+<h1 id="doctor-rules">doctor rules</h1>
+<p>Findings have a level: an <strong>error</strong> makes <code>depcurfew doctor</code> exit with 1, a <strong>warning</strong> does too when <code>doctor.failOn</code> in <code>depcurfew.json</code> or <code>--fail-on</code> is <code>warning</code> (the policy of <code>depcurfew init</code> sets it; without it a warning does not), and a <strong>note</strong> never does. When warnings make doctor fail, the line under the counts says where that was set, with how to fail on errors only, and <code>--json</code> has <code>failOn</code> (<code>error</code> or <code>warning</code>), <code>failOnFrom</code> (<code>option</code>, <code>policy</code> or <code>default</code>) and <code>strict</code> (<code>true</code> when warnings fail). Things doctor could not check (a binary lockfile, a lockfile format without install-script data, a missing policy) are listed as notes after the findings, not as findings: each line starts with <code>note</code> and ends with its code (the rule that could not check something, or a code such as <code>policy-missing</code>, or <code>script-not-followed</code> for a CI run step or a Dockerfile <code>RUN</code> that changes the directory more than 256 times or to a path longer than 4096 characters, or sets more than 1024 variables, after which depcurfew does not follow the directory or the variables), with what to do on the next line when there is something to do, and the line of counts counts them as notes. In <code>--json</code> each entry of <code>notices</code> has <code>level</code> (<code>note</code>), <code>code</code>, <code>location</code> and <code>file</code> when it concerns one file (<code>location.line</code> too when it concerns one line, such as the step or instruction of <code>script-not-followed</code>, which SARIF uses for the region), <code>message</code>, and <code>fix</code> when there is one; <code>summary</code> counts the findings only. Findings point at the line, and for a syntax error also the column (<code>location.column</code>), where the problem is, also a problem of <code>depcurfew.json</code>, which gets the line of the field it names. Below them, doctor says what it checked: the package managers and bots it found with the version it checked against, the files it read and every check with what it checks and its result, <code>passed</code>, the problems it found, <code>skipped</code> when it needs a policy (<code>needs a valid depcurfew.json</code> when the file is there but invalid), or <code>not applicable</code> when it does not concern the project, such as the Python checks without a Python tool or the bot checks without an update bot (<code>checked</code> in <code>--json</code>, where the result is <code>passed</code>, <code>problems</code>, <code>skipped</code> or <code>not-applicable</code>).</p>
+<h2 id="invalid-policy"><code>invalid-policy</code></h2>
+<p><strong>error</strong> · depcurfew.json does not follow the schema or cannot be read.</p>
+<p>Without a valid policy, the rules that compare the repository with depcurfew.json cannot run, so doctor runs only the rules that need no policy, as when there is no policy file.</p>
+<p>Fix: Fix what the message lists; an editor that reads the $schema of depcurfew.json shows the problems as you type.</p>
+<h2 id="invalid-project"><code>invalid-project</code></h2>
+<p><strong>error</strong> · needs depcurfew.json · A directory listed in projects in depcurfew.json does not exist, is not a directory, is a symlink, has a depcurfew.json of its own or overlaps a workspace package of the root.</p>
+<p>depcurfew checks and configures each listed directory as a project of its own. A directory that is missing or misspelled is never checked, so its package managers keep whatever configuration they have; one with a depcurfew.json of its own would follow two policies, and a workspace package of the root is configured with the root already. depcurfew apply writes nothing while one of them is listed.</p>
+<p>Fix: Correct or remove the entry in projects, or remove the depcurfew.json of the project.</p>
+<h2 id="depcurfew-outdated"><code>depcurfew-outdated</code></h2>
+<p><strong>warning</strong> · The project installs a newer depcurfew than the one running.</p>
+<p>A global install or an old cached copy may not know settings, rules or tool versions that the version pinned in the project knows, so it can miss problems or report fixed ones. The project copy is read from node_modules or package-lock.json, in the project and in the tools directory .claude/depcurfew that the README recommends for a repository without package.json in its root.</p>
+<p>Fix: Run the project&#39;s copy of depcurfew (install the project&#39;s dependencies first when only package-lock.json pins it), or update the one you run.</p>
+<h2 id="manager-version-too-old"><code>manager-version-too-old</code></h2>
+<p><strong>error</strong> · A declared package manager version, or the npm or pip that comes with a declared Node.js or Python version, is older than a setting the repository relies on.</p>
+<p>Package managers ignore settings they do not know yet; npm 10 does not even warn. When packageManager, devEngines, Volta, .tool-versions, a CI step or a Dockerfile pins an older version, the setting is silently not applied there. The same holds for the npm that comes with the Node.js a CI job, a Dockerfile stage or a version file (.nvmrc, .node-version) chooses, and for the pip of a python image: Node.js 22 comes with npm 10, which has no min-release-age. Composer cannot pin its own version: a composer.lock whose plugin-api-version shows that a Composer older than 2.11 wrote it gives a warning, and otherwise a note says that the cooldown needs Composer 2.11.</p>
+<p>Fix: Raise the declared version to at least the version that introduced the setting, everywhere it is declared, or install a newer npm or pip before installing packages.</p>
+<h2 id="runtime-end-of-life"><code>runtime-end-of-life</code></h2>
+<p><strong>warning</strong> · A declared Node.js version is past its end of life.</p>
+<p>After its end of life a Node.js release line gets no more releases, security fixes included. A version file, CI step or Dockerfile that only allows such lines keeps running an unpatched Node.js, and an older npm with it.</p>
+<p>Fix: Move to a Node.js line that is still supported, in every place that declares the version.</p>
+<h2 id="corepack-unavailable"><code>corepack-unavailable</code></h2>
+<p><strong>warning</strong> · packageManager or devEngines.packageManager pins Yarn or npm, but a declared Node.js is 25 or later, which no longer comes with Corepack.</p>
+<p>Corepack reads packageManager (and devEngines.packageManager) and runs the pinned Yarn, or npm after corepack enable npm. Node.js 25.0.0 stopped distributing Corepack, so where a version file, CI job or Dockerfile chooses Node.js 25 or later, the pin has no effect unless Corepack is installed separately: whatever Yarn or npm is there runs, or none. pnpm 10 and later switches to its pinned version itself, npm checks devEngines.packageManager itself, and every Yarn from 1.18 runs a release committed under yarnPath in .yarnrc.yml, so those pins are not reported; nor is a CI job or Dockerfile stage that installs or runs Corepack before it installs with the pinned tool.</p>
+<p>Fix: Install Corepack where that Node.js runs (npm install -g corepack, then corepack enable), before the pinned tool runs.</p>
+<h2 id="setting-ignored-by-version"><code>setting-ignored-by-version</code></h2>
+<p><strong>error</strong> · A setting or file is ignored by the package manager version in use.</p>
+<p>Package managers drop old settings and files in new major versions and only accept new forms from some version on. The configuration stays in the repository and looks effective while the version in use ignores it.</p>
+<p>Fix: Move the setting to the place and form this version reads.</p>
+<h2 id="npmrc-overrides-policy"><code>npmrc-overrides-policy</code></h2>
+<p><strong>error</strong> · An .npmrc file changes a security setting in a way the policy does not see, or is ignored.</p>
+<p>Package managers read .npmrc from different places with different priorities. npm ignores the .npmrc of workspace packages and the keys below a [section] header, and a before date in .npmrc takes the place of min-release-age; pnpm 10 applies a root .npmrc value whenever pnpm-workspace.yaml does not set the same setting, which can weaken the policy, and dangerously-allow-all-builds there runs every build script while pnpm-workspace.yaml has no build settings of its own.</p>
+<p>Fix: Keep security settings out of .npmrc files that are ignored or that override the policy; set them through depcurfew.json and depcurfew apply.</p>
+<h2 id="pnpm-shared-workspace-lockfile"><code>pnpm-shared-workspace-lockfile</code></h2>
+<p><strong>warning</strong> · pnpm 10 without a shared lockfile lets a package .npmrc change the release-age delay.</p>
+<p>With sharedWorkspaceLockfile: false, pnpm 10 installs every workspace project separately with that project&#39;s own .npmrc layered over the workspace settings (read from the pnpm 10 source code), so a setting such as minimum-release-age=0 in a package .npmrc applies to that package.</p>
+<p>Fix: Remove security settings from package .npmrc files, or keep the default shared lockfile.</p>
+<h2 id="python-config-ignored"><code>python-config-ignored</code></h2>
+<p><strong>error</strong> · A Python tool ignores a setting where it is written.</p>
+<p>uv reads uv.toml instead of [tool.uv] when both exist, and in a workspace only the root; pip reads no configuration from the project and rejects options it does not know in requirements files, so a CI job or a Dockerfile stage of the python image installs without the release-age delay unless it sets PIP_UPLOADED_PRIOR_TO or passes --uploaded-prior-to; PDM in uv mode installs without only-binary; Pipenv with resolver_backend = &quot;pure-python&quot; locks without cool-down-period. A setting in such a place looks effective but is not, and an exclude-newer date freezes dependencies instead of delaying new versions.</p>
+<p>Fix: Move the setting to the file the tool reads.</p>
+<h2 id="composer-config-weakens"><code>composer-config-weakens</code></h2>
+<p><strong>error</strong> · composer.json or the env of a CI workflow turns a Composer protection off: the cooldown, malware blocking, allow-plugins, secure-http or TLS.</p>
+<p>Composer 2.11 withholds new versions with config.policy.cooldown and runs only the plugins config.allow-plugins allows. &quot;policy&quot;: false, &quot;cooldown&quot;: false or &quot;block&quot;: false under it, a repository with &quot;require-published-time&quot;: false (the cooldown then counts from the time the package author wrote) or &quot;filter&quot;: false (no malware list), &quot;allow-plugins&quot;: true (or a &quot;*&quot; or &quot;*/*&quot; key) and &quot;secure-http&quot;: false or &quot;disable-tls&quot;: true turn such a protection off while the configuration still looks right; so do COMPOSER_POLICY=0, COMPOSER_NO_BLOCKING or COMPOSER_NO_SECURITY_BLOCKING set to 1, true, on, false or off, COMPOSER_POLICY_COOLDOWN_PERIOD with a shorter period and COMPOSER_POLICY_COOLDOWN_BLOCK=0 in the env of a CI workflow. Settings of the cooldown are reported when depcurfew.json sets one, allow-plugins when it denies dependency code; malware blocking and filter give warnings, because depcurfew.json does not manage them. COMPOSER_HOME/config.json on a machine is not read.</p>
+<p>Fix: Remove the setting or the variable, or limit it to the repository or the run that needs it.</p>
+<h2 id="config-drift"><code>config-drift</code></h2>
+<p><strong>error</strong> · needs depcurfew.json · A configuration file does not match what depcurfew apply writes for depcurfew.json.</p>
+<p>A generated setting was edited by hand, or depcurfew.json changed without running depcurfew apply, so the tools enforce something other than the policy. Entries in a tool&#39;s own install-script lists that apply does not change are reported as well: one that lets a package of installScripts.deny run its scripts is an error, like the differences depcurfew apply fixes, and one that lets a package the policy does not name run them, or that blocks a package the policy allows, is a warning. So is an entry of config.policy.cooldown.ignore in composer.json that exempts a package cooldown.exclude does not, which apply keeps unless it wrote the entry itself.</p>
+<p>Fix: Run depcurfew apply (depcurfew apply --dry-run shows the difference), or change depcurfew.json if the edit was intended.</p>
+<h2 id="bot-cooldown-mismatch"><code>bot-cooldown-mismatch</code></h2>
+<p><strong>error</strong> · An update bot waits less than the package manager, or for the actions of workflows less than the policy, before proposing a new version.</p>
+<p>The bot then opens pull requests with versions the package manager would not pick yet: they fail where the manager re-checks the lockfile or bring in younger versions, and security updates that skip the bot delay fail too. A Dependabot cooldown with an include list delays only the dependencies it names; a Renovate packageRules entry can shorten the delay for a registry, manager, category, update type or the files and depType of actions, and one with a matcher depcurfew cannot read gets a note. For the actions of workflows the bot must wait cooldown.minimum. An unreadable bot file, a JSON5 Renovate file or a Dependabot file with a YAML alias gets a note per package manager that waits. With projects, a bot file inside a project gets a note (bots read only the root&#39;s), and a project the root&#39;s Dependabot configuration leaves out while it updates others gets a warning. A Dependabot composer entry gets a note: it counts from the release time the author sets.</p>
+<p>Fix: Give the bot a delay at least as long as the package manager&#39;s, and for the actions of workflows as long as cooldown.minimum (depcurfew apply does this).</p>
+<h2 id="broad-exclusion"><code>broad-exclusion</code></h2>
+<p><strong>error</strong> · An exception list matches every package, or a per-scope setting shortens the delay, which turns the protection off.</p>
+<p>A release-age exception such as &quot;*&quot; (or a policy allow-list entry such as &quot;@*/*&quot;) looks like a narrow exception but exempts every package, so the delay or the install-script block never applies. The same goes for a Renovate packageRules entry that turns minimumReleaseAge off for a whole datasource, Renovate manager (matchManagers) or category (matchCategories) in use, for major, minor or patch updates of every package, or with only negative patterns, which match every package they do not name, and, when depcurfew.json sets a cooldown for Renovate and the repository has workflows, for the github-actions manager, every workflow file (matchFileNames) or the depType action (matchDepTypes). In Yarn 4.17 and later, npmScopes.&lt;scope&gt;.npmMinimalAgeGate replaces the delay for one scope, so a shorter value there exempts that scope.</p>
+<p>Fix: Replace the pattern with the packages or scopes that really need the exception.</p>
+<h2 id="lockfile-forbidden-source"><code>lockfile-forbidden-source</code></h2>
+<p><strong>error</strong> · needs depcurfew.json · The lockfile installs a package from a source depcurfew.json denies.</p>
+<p>A git repository, a tarball URL or a local path bypasses the registry and its checks (release age, provenance, integrity from the registry). The lockfile shows what installs really fetch, whatever the package manager settings say. For Composer, whose lockfile does not name the repository of a package, packages of a path or artifact repository are told by their dist, those of a VCS or package repository by the repositories of composer.json; a package without a usable dist, or one that config.preferred-install makes Composer check out, is a VCS checkout. Warnings: an archive from a host that neither the archives of Packagist.org (GitHub, GitLab, Bitbucket, Codeberg) nor a repository of composer.json use, such an archive next to a source on another host, and a repository of a denied kind that no package of composer.lock comes from.</p>
+<p>Fix: Replace the dependency with a registry version, or allow that source in depcurfew.json.</p>
+<h2 id="lockfile-install-scripts"><code>lockfile-install-scripts</code></h2>
+<p><strong>error</strong> · needs depcurfew.json · The lockfile has packages with install scripts, or Python packages built from source, that depcurfew.json does not allow.</p>
+<p>Install scripts run arbitrary code during installation, and so do building a Python package from source (a source distribution, a git repository or a local directory) and loading a Composer plugin. Where the package manager runs them by default, or its own allow-list lets them run, they run code the policy does not allow; where it blocks them, a package may not work. A package in installScripts.deny works without its scripts, so it is reported only while the package manager still runs them (or builds it from source), or when it cannot be installed (a Python package without wheels, esbuild without optional dependencies). npm, Bun (1.4.4+) and Deno (lockfile v5) record install scripts in the lockfile and composer.lock records plugins; uv.lock, poetry.lock, pdm.lock and pylock.toml show which Python packages have no wheel. pip requirements files and Pipfile.lock list hashes only, so the check does not apply to their packages from an index, only to requirements from a repository, a URL or a local path.</p>
+<p>Fix: Remove or replace the package, or review it and add it to installScripts.allow in depcurfew.json, or to installScripts.deny when it works without its scripts (Python packages with the prefix pypi:, Composer plugins with composer:). For a package in installScripts.deny, make the package manager block its scripts (depcurfew apply records the denial where the tool can). For packages whose scripts depcurfew knows (esbuild, fsevents, lefthook), from a registry, the finding names the fix: installScripts.deny, and for lefthook running lefthook install after each clone, as its documentation says for projects that do not use its postinstall script.</p>
+<h2 id="lockfile-out-of-date"><code>lockfile-out-of-date</code></h2>
+<p><strong>warning</strong> · A uv.lock or pdm.lock was locked with other settings than the project has now.</p>
+<p>uv records the release-age delay (exclude-newer and exclude-newer-package) in uv.lock, and PDM checks pdm.lock against a hash of the dependencies, the sources and the [tool.pdm.resolution] table, the delay and the build ban included. After a change, by depcurfew apply or by hand, uv sync --locked, uv lock --check, pdm lock --check and pdm install --check fail until the lockfile is locked again, and the lockfile still holds what was resolved under the old settings.</p>
+<p>Fix: Lock again (uv lock or pdm lock) and commit the lockfile.</p>
+<h2 id="known-malicious"><code>known-malicious</code></h2>
+<p><strong>error</strong> · With --osv: a lockfile locks a package version that OSV.dev lists as malicious.</p>
+<p>With --osv, doctor sends the name and version of every package the lockfiles it reads lock (npm, pnpm, Yarn, Bun and Deno lockfiles, uv.lock, poetry.lock, pdm.lock, Pipfile.lock, pylock.toml, requirements pinned with == and the releases in composer.lock) to api.osv.dev in batch queries, and reports each version that has a record of the OpenSSF malicious-packages database there (an id starting with MAL-). Such a version was published to steal or damage, and installing from the lockfile brings it back. It looks up what the tool installs: for npm the registry tarball of resolved, for pnpm the one of resolution.tarball (each path read as the registry reads it), for Yarn the version of resolution; an entry whose name or version says otherwise gets a warning, as does a registry entry without an exact version. Only reported malware is found, and the database admits false positives. Without --osv nothing is sent and the rule does not run; when OSV.dev cannot be reached it gives a warning instead of passing.</p>
+<p>Fix: Remove or replace the package version and lock again; if it was installed anywhere, read the record on OSV.dev and treat that machine as exposed.</p>
+<h2 id="unreadable-config"><code>unreadable-config</code></h2>
+<p><strong>error</strong> · A configuration file or lockfile cannot be read, parsed or edited, so depcurfew cannot check it.</p>
+<p>A package manager or bot may still read the file and its settings may weaken the policy; depcurfew fails closed and reports an error instead of passing silently.</p>
+<p>Fix: Fix what the message describes: invalid syntax, missing read permission, a symlink, a file over the size limit or a style depcurfew apply cannot edit.</p>
+</main>
+<footer class="site">
+<p>depcurfew 1.4.0 · built from README.md and src/knowledge/ with <code>npm run site</code> · <a href="https://github.com/DevXord/depcurfew">Source on GitHub</a> · MIT license</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>depcurfew 1.1.0</title>
+<meta name="description" content="One supply-chain security policy for npm, pnpm, Yarn, Bun, Deno, uv, pip, Poetry, PDM, Pipenv, Renovate and Dependabot, plus a doctor that finds config that silently does nothing.">
+<link rel="stylesheet" href="../style.css">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header class="site">
+<div class="bar">
+<a class="brand" href="../index.html"><img src="../favicon.svg" alt="" width="20" height="20">depcurfew</a>
+<nav aria-label="Pages">
+<ul>
+<li><a href="index.html" aria-current="page">README</a></li>
+<li><a href="knowledge.html">Knowledge base</a></li>
+<li><a href="changelog.html">Changes in 1.1.0</a></li>
+<li><a href="../versions.html">Versions</a></li>
+<li><a href="../index.html">Current version (1.4.0)</a></li>
+</ul>
+</nav>
+</div>
+</header>
+<main id="content">
+<p class="banner">This page documents depcurfew 1.1.0, an earlier version. The current version is 1.4.0: <a href="../index.html">its documentation</a> · <a href="../versions.html">all versions</a></p>
+<h1 id="depcurfew">depcurfew</h1>
+<p>One supply-chain security policy for npm, pnpm, Yarn, Bun, Deno, uv, pip, Poetry, PDM, Pipenv, Renovate and Dependabot, and a doctor that finds configuration that silently does nothing.</p>
+<h2 id="why">Why</h2>
+<p>Package managers and update bots now each protect you against freshly published malicious versions: a release-age delay, an allow-list for install scripts, limits on git and tarball dependencies. Each tool names these settings differently, counts time in its own unit, reads them from its own files and supports them only from some version on. A setting can also look right and do nothing, for example because CI pins an older version of the package manager, or because a bot proposes versions the package manager would refuse.</p>
+<p>depcurfew keeps one policy file, <code>depcurfew.json</code>, writes it into the configuration of every tool in the repository, and checks that the result really works.</p>
+<h2 id="five-minute-start">Five-minute start</h2>
+<ol>
+<li><code>npx depcurfew init</code> writes <code>depcurfew.json</code> with the default policy below and lists the tools it detected. When the repository already sets a longer release-age delay for one of them, <code>cooldown.minimum</code> keeps the longest one, and <code>init</code> says where it found it.</li>
+<li><code>npx depcurfew explain</code> shows what it detected and what the policy means for each tool.</li>
+<li><code>npx depcurfew apply --dry-run</code> prints the changes as a diff, without writing anything.</li>
+<li><code>npx depcurfew apply</code> writes them. Run it again whenever <code>depcurfew.json</code> changes; a second run with the same policy changes nothing.</li>
+<li><code>npx depcurfew doctor</code> reports configuration that silently does not work and drift from the policy, and exits with 1 when it finds an error.</li>
+<li>Add the <a href="#github-action">GitHub Action</a> so that doctor runs on every push and reports to code scanning.</li>
+</ol>
+<p>The default policy:</p>
+<pre><code class="language-json">{
+  &quot;$schema&quot;: &quot;https://unpkg.com/depcurfew/schema.json&quot;,
+  &quot;version&quot;: 1,
+  &quot;cooldown&quot;: {
+    &quot;minimum&quot;: &quot;3d&quot;,
+    &quot;exclude&quot;: [],
+    &quot;securityUpdates&quot;: &quot;bypass&quot;
+  },
+  &quot;installScripts&quot;: {
+    &quot;default&quot;: &quot;deny&quot;,
+    &quot;allow&quot;: []
+  },
+  &quot;sources&quot;: {
+    &quot;git&quot;: &quot;deny&quot;,
+    &quot;remoteTarball&quot;: &quot;deny&quot;,
+    &quot;file&quot;: &quot;allow&quot;,
+    &quot;directory&quot;: &quot;allow&quot;
+  },
+  &quot;targets&quot;: &quot;auto&quot;
+}
+</code></pre>
+<h2 id="installation">Installation</h2>
+<p>depcurfew needs Node.js 22 or later and has a single runtime dependency, <a href="https://github.com/eemeli/yaml"><code>yaml</code></a>.</p>
+<p>Add it to the project as a development dependency, so the team, CI and coding agents all run the version pinned in the lockfile. Once <code>apply</code> has written the project&#39;s release-age delay, later updates of depcurfew go through that delay as well:</p>
+<pre><code class="language-bash">npm install --save-dev depcurfew
+npx dcf doctor
+</code></pre>
+<p>Who needs it installed:</p>
+<ul>
+<li><strong>Developers working on the project:</strong> nothing to do. The protection does not depend on depcurfew being installed: it lives in the package manager configuration that <code>apply</code> writes into the repository (<code>.npmrc</code>, <code>package.json</code>, <code>pnpm-workspace.yaml</code>, <code>.yarnrc.yml</code>, <code>bunfig.toml</code>, <code>deno.json</code>, <code>pyproject.toml</code> or <code>uv.toml</code>, <code>poetry.toml</code>, <code>Pipfile</code>, <code>requirements.txt</code> and the bot configuration), and the package managers read it on their own. pip&#39;s release-age delay is the exception: pip reads it only from the environment where it runs, and <code>apply</code> says what to set there. The project install brings depcurfew along as a development dependency anyway.</li>
+<li><strong>Whoever changes <code>depcurfew.json</code>:</strong> runs <code>npx dcf apply</code> and commits the result.</li>
+<li><strong>CI:</strong> runs <code>doctor</code>, with the GitHub Action below or with the project&#39;s own copy on other CI systems.</li>
+</ul>
+<p>A global install (<code>npm install -g depcurfew</code>) works, but teams should not rely on it: each machine may run a different version, the lockfile does not pin it, and npm does not read the project&#39;s <code>.npmrc</code> in global mode, so the project&#39;s release-age delay does not cover the install.</p>
+<p>To work on depcurfew itself, run it from a clone of this repository:</p>
+<pre><code class="language-bash">git clone https://github.com/DevXord/depcurfew.git
+cd depcurfew
+npm ci
+npm run build
+node dist/cli.js doctor /path/to/your/repository
+</code></pre>
+<h2 id="the-policy-file">The policy file</h2>
+<p>Every section is optional: a section that is absent means depcurfew does not manage that area. Durations are converted to each tool&#39;s own unit and always rounded up, so a tool never waits less than the policy says. Where a tool cannot express part of the policy, depcurfew says so instead of skipping it silently.</p>
+<div class="table"><table>
+<thead>
+<tr><th>Field</th><th>Values</th><th>Default</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>version</code></td><td></td><td></td><td>Version of the policy format.</td></tr>
+<tr><td><code>cooldown</code></td><td></td><td></td><td>Release-age delay (cooldown): freshly published versions wait before they are used.</td></tr>
+<tr><td><code>cooldown.minimum</code></td><td></td><td></td><td>Minimum age of a release before it is installed or proposed: a whole number followed by m (minutes), h (hours), d (days) or w (weeks). Converted to each tool&#39;s unit, always rounding up.</td></tr>
+<tr><td><code>cooldown.exclude</code></td><td></td><td><code>[]</code></td><td>Packages that skip the release-age delay, e.g. your own scope.</td></tr>
+<tr><td><code>cooldown.securityUpdates</code></td><td><code>&quot;bypass&quot;</code>, <code>&quot;delay&quot;</code></td><td><code>&quot;bypass&quot;</code></td><td>Whether security updates skip the delay (&quot;bypass&quot;) or wait like other updates (&quot;delay&quot;), where the tool can tell them apart.</td></tr>
+<tr><td><code>installScripts</code></td><td></td><td></td><td>Code that dependencies run when they are installed: lifecycle scripts in npm, building from source in Python.</td></tr>
+<tr><td><code>installScripts.default</code></td><td><code>&quot;allow&quot;</code>, <code>&quot;deny&quot;</code></td><td></td><td>Whether dependency lifecycle scripts (preinstall, install, postinstall) run by default; for Python, whether packages may be built from source.</td></tr>
+<tr><td><code>installScripts.allow</code></td><td></td><td><code>[]</code></td><td>Packages whose lifecycle scripts may run when the default is &quot;deny&quot;; Python packages listed here are always built from source.</td></tr>
+<tr><td><code>sources</code></td><td></td><td></td><td>Where dependencies may come from besides the registry. An absent field is not managed.</td></tr>
+<tr><td><code>sources.git</code></td><td><code>&quot;allow&quot;</code>, <code>&quot;deny&quot;</code></td><td></td><td>Dependencies installed from git repositories.</td></tr>
+<tr><td><code>sources.remoteTarball</code></td><td><code>&quot;allow&quot;</code>, <code>&quot;deny&quot;</code></td><td></td><td>Dependencies installed from tarball URLs outside the registry.</td></tr>
+<tr><td><code>sources.file</code></td><td><code>&quot;allow&quot;</code>, <code>&quot;deny&quot;</code></td><td></td><td>Dependencies installed from local tarball files.</td></tr>
+<tr><td><code>sources.directory</code></td><td><code>&quot;allow&quot;</code>, <code>&quot;deny&quot;</code></td><td></td><td>Dependencies installed from local directories.</td></tr>
+<tr><td><code>targets</code></td><td></td><td><code>&quot;auto&quot;</code></td><td>Tools to configure: &quot;auto&quot; detects them in the repository, or list them explicitly.</td></tr>
+</tbody>
+</table></div>
+<h2 id="commands">Commands</h2>
+<p>The package installs two names for the same command: <code>depcurfew</code> and the short <code>dcf</code>, so <code>dcf doctor</code> works like <code>depcurfew doctor</code>.</p>
+<div class="table"><table>
+<thead>
+<tr><th>Command</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td><code>depcurfew init [directory] [--force]</code></td><td>Writes <code>depcurfew.json</code> with the default policy (keeping a longer release-age delay the repository already sets); <code>--force</code> overwrites an existing one.</td></tr>
+<tr><td><code>depcurfew explain [directory] [--json]</code></td><td>Describes the detected package managers, versions, bots and workspaces, and the policy values for each tool.</td></tr>
+<tr><td><code>depcurfew apply [directory] [--dry-run] [--json]</code></td><td>Writes the policy into the configuration of every target tool; <code>--dry-run</code> prints a unified diff instead, <code>--json</code> the result as JSON.</td></tr>
+<tr><td><code>depcurfew doctor [directory] [--json | --sarif]</code></td><td>Finds configuration that silently does not work and drift from the policy; <code>--sarif</code> prints SARIF 2.1.0 for code scanning.</td></tr>
+<tr><td><code>depcurfew check &lt;package...&gt; [--json] [--dir &lt;directory&gt;] [--registry &lt;url&gt;] [--index &lt;url&gt;]</code></td><td>Checks packages against the policy before you install them: see <a href="#guarding-installs">Guarding installs</a>.</td></tr>
+<tr><td><code>depcurfew check --hook claude-code</code></td><td>The same check as a Claude Code hook that blocks install commands breaking the policy.</td></tr>
+</tbody>
+</table></div>
+<p>Without a directory, <code>explain</code>, <code>apply</code> and <code>doctor</code> work on the nearest directory with <code>depcurfew.json</code>, from the current directory up to the root of the repository (the directory with <code>.git</code>), and say so when that is a parent directory (outside a git repository only the current directory counts, and on Linux and macOS a parent directory counts only when it belongs to you and others cannot write to it, because a shared parent such as <code>/tmp</code> may hold someone else&#39;s <code>depcurfew.json</code>; directories inside <code>node_modules</code> are skipped), so <code>doctor</code> run in a subdirectory does not pass for a project without a policy. A directory given on the command line is used as it is. <code>check</code> looks for <code>depcurfew.json</code> the same way, starting in <code>--dir</code>.</p>
+<p>Exit codes: <code>0</code> success (warnings included), <code>1</code> an error (an invalid or unreadable policy, a file that cannot be edited, a doctor finding with level error), <code>2</code> a usage error (such as an unknown option or a directory that does not exist). <code>depcurfew &lt;command&gt; --help</code> describes a command with examples and its exit codes.</p>
+<p>Every finding and warning says what to do about it. When a command cannot start, it says why with a code (<code>directory-not-found</code>, <code>not-a-directory</code>, <code>policy-missing</code>, <code>policy-invalid</code>, <code>policy-unreadable</code>, and for <code>init</code> also <code>policy-exists</code> and <code>cannot-write</code>) and what to do; with <code>--json</code> that is a document with <code>errors</code> on stdout, and <code>doctor --sarif</code> prints a run marked as not successful. Text for people is colored on a terminal; <code>NO_COLOR=1</code> turns colors off and <code>FORCE_COLOR=1</code> turns them on, for example in a CI log that shows them. Control characters in names and values from the repository or a registry are shown as text (ESC as <code>\x1b</code>, or as <code>\u001b</code> inside a quoted value such as a package name in the problems of <code>depcurfew.json</code>), so a crafted package or file name cannot change the terminal. <code>--json</code>, <code>--sarif</code> and a diff written to a file stay plain, for programs and AI agents.</p>
+<p>The <code>--json</code> documents of all commands share these fields: <code>schemaVersion</code> (1), <code>policy</code> (its status in <code>apply</code> and <code>doctor</code>, the path of the <code>depcurfew.json</code> used in <code>check</code>, its values in <code>explain</code>), <code>notices</code> (such as the parent directory whose <code>depcurfew.json</code> was used) and <code>errors</code>, the reasons a command could not start, each with <code>code</code>, <code>level</code>, <code>location.file</code>, <code>message</code> and <code>fix</code>, and <code>issues</code> for <code>policy-invalid</code>. Paths are relative to the directory the command works on (a directory that does not exist is named as given). A <code>depcurfew.json</code> that cannot be used is an error with the same code, message and fix in <code>apply</code>, <code>check</code> and <code>explain</code>, which also keeps it in <code>policy</code>; <code>doctor</code> reports it as the finding <code>invalid-policy</code>, so that it reaches code scanning too, and counts it in <code>summary.error</code>. Within a <code>schemaVersion</code> fields and values are only added; a field is removed or changes its meaning only with a new <code>schemaVersion</code>.</p>
+<p>How <code>apply</code> edits files:</p>
+<ul>
+<li>It keeps comments, formatting, line endings and key order. In line-based files (INI, TOML) it writes a block between <code># &gt;&gt;&gt; depcurfew managed block</code> and <code># &lt;&lt;&lt; depcurfew managed block</code> markers and comments out older copies of the settings it manages (they come back when the policy stops managing them); in YAML it marks the keys it writes with <code># managed by depcurfew</code>; JSON files keep their comments and indentation.</li>
+<li>It never removes settings it does not manage. Allow-lists are only added to; exception lists follow the policy, except the entries Renovate adds to pnpm&#39;s exception list for security updates, which stay with their comment.</li>
+<li>When it replaces a longer release-age delay someone set by hand with the policy&#39;s shorter one, it warns (<code>cooldown-shortened</code>) and names the <code>cooldown.minimum</code> that keeps it.</li>
+<li>If any file cannot be edited, nothing is written. If a file cannot be written, the files already written are put back.</li>
+<li>It does not create bot configuration files or project manifests (<code>package.json</code>, <code>deno.json</code>, <code>pyproject.toml</code>, <code>Pipfile</code>, <code>requirements.txt</code>); it creates a package manager&#39;s configuration file when it is missing. A package manager seen only in a CI setup step, with nothing of it in the repository, is not configured under <code>targets: &quot;auto&quot;</code>.</li>
+<li>It warns when a file it writes is ignored by git (<code>.gitignore</code> or <code>.git/info/exclude</code>), because the change would then stay on one machine.</li>
+</ul>
+<h3 id="apply-warnings-and-errors">apply warnings and errors</h3>
+<p>Each warning and error of <code>apply</code> has a code. The text output shows it in parentheses after the message, with what to do on the next line, like a doctor finding. <code>depcurfew apply --json</code> (also with <code>--dry-run</code>) prints one JSON document and nothing on stderr: <code>changes</code> (each file with its action and unified diff), <code>warnings</code> and <code>errors</code> (each with <code>code</code>, <code>level</code>, <code>message</code> and <code>fix</code>; <code>tool</code> when it concerns one tool; <code>location</code> when it concerns one file, with <code>file</code> and, when known, <code>line</code>; for an invalid policy also <code>issues</code>), <code>snippets</code> to add by hand, <code>notices</code> (such as the parent directory whose <code>depcurfew.json</code> was used) and <code>written</code>. A run that writes nothing because of an error lists no changes and exits with 1.</p>
+<p>Warnings:</p>
+<ul>
+<li><code>nothing-to-configure</code>: depcurfew found no supported package manager or bot, so nothing is configured.</li>
+<li><code>file-unreadable</code>: A file that shows which tools a project uses cannot be read or parsed (too large, a symlink out of the repository, no read permission, invalid), so depcurfew may configure fewer tools than the project uses.</li>
+<li><code>tool-not-supported</code>: A detected tool is not supported (Yarn Classic), so nothing is written for it.</li>
+<li><code>tool-only-in-ci</code>: A tool appears only in a CI setup step, with no manifest, lockfile or configuration in the repository, so targets &quot;auto&quot; does not configure it.</li>
+<li><code>version-not-pinned</code>: No exact version of a package manager is pinned, so depcurfew configures for the latest version it knows.</li>
+<li><code>version-too-old</code>: The pinned version of a tool lacks a setting the policy needs, so that setting is not written.</li>
+<li><code>cooldown-not-written</code>: The release-age delay cannot be written for a tool.</li>
+<li><code>cooldown-shortened</code>: A release-age delay set outside depcurfew&#39;s markers (in JSON files also one an earlier apply wrote) is longer than the policy, and apply replaces it with the shorter one.</li>
+<li><code>cooldown-environment-only</code>: pip reads no project configuration, so the release-age delay has to be set in the environment where pip runs.</li>
+<li><code>exclude-pattern-unsupported</code>: A cooldown exception uses a wildcard the tool does not support, so it is not written.</li>
+<li><code>exclude-unsupported</code>: The tool has no setting for cooldown exceptions, so the release-age delay applies to every package.</li>
+<li><code>allow-pattern-unsupported</code>: An installScripts.allow entry is a pattern, but the tool takes package names only, so it is not written.</li>
+<li><code>allow-all-unsupported</code>: The tool has no setting that allows every install script, so installScripts &quot;allow&quot; is not written.</li>
+<li><code>allow-all-replaced</code>: A setting that allowed every install script was replaced, because the policy denies install scripts.</li>
+<li><code>allow-list-entry-outside-policy</code>: An install-script allow-list in the repository lets a package run scripts the policy does not allow; apply does not remove it.</li>
+<li><code>built-in-list-replaced</code>: Bun&#39;s built-in list of trusted packages is replaced by the policy&#39;s allow-list.</li>
+<li><code>scripts-not-enforceable</code>: The pinned npm or pnpm runs every install script and has no allow-list, so &quot;deny&quot; cannot be enforced.</li>
+<li><code>before-overrides-cooldown</code>: before= in .npmrc takes the place of the release-age delay apply writes, or makes npm stop with an error next to it.</li>
+<li><code>exact-version-gap</code>: The pinned pnpm skips the release-age delay for packages requested by exact version.</li>
+<li><code>source-not-enforceable</code>: The tool has no setting for a dependency source the policy denies; doctor checks the lockfile instead.</li>
+<li><code>source-switch-indirect-only</code>: The pnpm setting for git and tarball sources stops them only for indirect dependencies.</li>
+<li><code>source-switch-combined</code>: One pnpm setting covers git and tarball sources, so denying one denies both.</li>
+<li><code>forced-source-build</code>: Python packages on the allow-list are always built from source, because no tool can only allow a build.</li>
+<li><code>build-switch-scope</code>: The tool&#39;s switch forbids building only packages from an index; git, local and archive dependencies are still built.</li>
+<li><code>build-switch-install-only</code>: Poetry applies its build switch when installing; poetry lock may still build source distributions.</li>
+<li><code>build-switch-environment-only</code>: The tool has no project setting that forbids building from source, so it has to be set in the environment where the tool runs.</li>
+<li><code>requirements-file-missing</code>: There is no requirements file to write pip options into.</li>
+<li><code>manifest-missing</code>: A setting belongs in a project manifest (package.json, deno.json, pyproject.toml, Pipfile) that does not exist, and apply does not create manifests.</li>
+<li><code>lockfile-out-of-date</code>: The lockfile records, or is checked against, a setting apply changed, so it has to be locked again.</li>
+<li><code>file-ignored-by-git</code>: A file apply writes matches a .gitignore rule, so the change may never reach the repository.</li>
+<li><code>bot-config-missing</code>: A bot has no configuration file, and depcurfew does not create one.</li>
+<li><code>bot-config-not-edited</code>: A bot configuration file is in a place or format depcurfew does not edit; a snippet shows what to add.</li>
+<li><code>bot-entries-missing</code>: The Dependabot configuration has no entries for the package managers in use.</li>
+<li><code>security-delay-unsupported</code>: Dependabot cannot delay security updates, so securityUpdates &quot;delay&quot; is not applied.</li>
+</ul>
+<p>Errors (nothing is written):</p>
+<ul>
+<li><code>cannot-edit</code>: A file cannot be read or edited safely (invalid syntax, a symlink, a style depcurfew does not edit), so nothing is written.</li>
+<li><code>cannot-write</code>: A file cannot be written (no permission, a read-only file system, a full disk, a directory or symlink in its place); the files already written are put back, so nothing changes.</li>
+<li><code>policy-missing</code>: The directory has no depcurfew.json.</li>
+<li><code>policy-invalid</code>: depcurfew.json does not follow the schema; issues lists the problems.</li>
+<li><code>policy-unreadable</code>: depcurfew.json cannot be read.</li>
+<li><code>policy-exists</code>: depcurfew init found a depcurfew.json and writes it only with --force.</li>
+<li><code>directory-not-found</code>: The directory given on the command line does not exist or cannot be opened.</li>
+<li><code>not-a-directory</code>: The path given on the command line is a file, not a directory.</li>
+</ul>
+<h2 id="supported-tools">Supported tools</h2>
+<p>What depcurfew configures and checks for each tool, from its <a href="knowledge.html">knowledge base</a>, where every value links to the official documentation or changelog it was verified against.</p>
+<div class="table"><table>
+<thead>
+<tr><th>Tool</th><th>Release-age delay</th><th>Exceptions</th><th>Install-script allow-list (Python: packages built from source)</th><th>Dependency sources</th><th>Verified</th></tr>
+</thead>
+<tbody>
+<tr><td>npm</td><td><code>min-release-age</code> in <code>.npmrc</code> (days), since 11.10.0</td><td><code>min-release-age-exclude</code>, since 11.17.0</td><td><code>allowScripts</code> in <code>package.json</code></td><td>git: <code>allow-git</code><br>remote tarball: <code>allow-remote</code><br>local tarball: <code>allow-file</code><br>local directory: <code>allow-directory</code></td><td>2026-10-28 – 2026-10-30</td></tr>
+<tr><td>pnpm</td><td><code>minimumReleaseAge</code> in <code>pnpm-workspace.yaml</code> (minutes), since 10.16.0</td><td><code>minimumReleaseAgeExclude</code>, since 10.16.0</td><td><code>allowBuilds</code> in <code>pnpm-workspace.yaml</code></td><td>git: <code>blockExoticSubdeps</code><br>remote tarball: <code>blockExoticSubdeps</code></td><td>2026-10-28 – 2026-10-31</td></tr>
+<tr><td>Yarn (Berry)</td><td><code>npmMinimalAgeGate</code> in <code>.yarnrc.yml</code> (minutes), since 4.10.2</td><td><code>npmPreapprovedPackages</code>, since 4.10.0</td><td><code>dependenciesMeta.&lt;package&gt;.built</code> in <code>package.json</code></td><td>git: <code>approvedGitRepositories</code></td><td>2026-10-28 – 2026-10-31</td></tr>
+<tr><td>Bun</td><td><code>install.minimumReleaseAge</code> in <code>bunfig.toml</code> (seconds), since 1.3.0</td><td><code>install.minimumReleaseAgeExcludes</code>, since 1.3.0</td><td><code>trustedDependencies</code> in <code>package.json</code></td><td>none</td><td>2026-10-28 – 2026-10-29</td></tr>
+<tr><td>Deno</td><td><code>minimumDependencyAge</code> in <code>deno.json</code>, <code>.npmrc</code> (minutes), since 2.5.5 / 2.6.0 ⚠️</td><td><code>minimumDependencyAge.exclude</code>, since 2.5.5</td><td><code>allowScripts</code> in <code>deno.json</code></td><td>none</td><td>2026-10-28 – 2026-10-30</td></tr>
+<tr><td>uv</td><td><code>exclude-newer</code> in <code>uv.toml</code>, <code>pyproject.toml</code> (duration string), since 0.9.17</td><td><code>exclude-newer-package</code>, since 0.9.25</td><td><code>no-binary-package</code> in <code>pyproject.toml</code></td><td>none</td><td>2026-10-30</td></tr>
+<tr><td>pip</td><td><code>uploaded-prior-to</code> on the command line or in the environment (no project file) (days), since 26.1.0</td><td>none</td><td><code>--no-binary</code> in <code>requirements.txt</code></td><td>none</td><td>2026-10-30 – 2026-10-31</td></tr>
+<tr><td>Poetry</td><td><code>solver.min-release-age</code> in <code>poetry.toml</code> (days), since 2.4.0</td><td><code>solver.min-release-age-exclude</code>, since 2.4.0</td><td><code>installer.no-binary</code> in <code>poetry.toml</code></td><td>none</td><td>2026-10-30</td></tr>
+<tr><td>PDM</td><td><code>exclude-newer</code> in <code>pyproject.toml</code> (duration string), since 2.26.9</td><td><code>exclude-newer-override</code>, since 2.29.1</td><td><code>no-binary</code> in <code>pyproject.toml</code></td><td>none</td><td>2026-10-30 – 2026-10-31</td></tr>
+<tr><td>Pipenv</td><td><code>cool-down-period</code> in <code>Pipfile</code> (duration string), since 2026.6.2</td><td>none</td><td>none</td><td>none</td><td>2026-10-30</td></tr>
+<tr><td>Renovate</td><td><code>minimumReleaseAge</code> in <code>renovate.json</code>, <code>renovate.jsonc</code> … (duration string), since 35.46.0</td><td><code>packageRules: matchPackageNames + minimumReleaseAge: null</code>, since 35.46.0 ❓</td><td>none</td><td>n/a</td><td>2026-10-28 – 2026-10-30</td></tr>
+<tr><td>Dependabot</td><td><code>cooldown</code> in <code>.github/dependabot.yml</code>, <code>.github/dependabot.yaml</code> (days), since 2025 07 01</td><td><code>cooldown.exclude</code>, since 2025 07 01 ❓</td><td>none</td><td>n/a</td><td>2026-10-28 – 2026-10-30</td></tr>
+</tbody>
+</table></div>
+<p>⚠️ official sources disagree (depcurfew takes the safer reading) · ❓ official sources are incomplete. Every value with its source: <a href="knowledge.html">docs/knowledge.md</a>.</p>
+<p>Yarn Classic (1.x) is detected but not supported.</p>
+<h3 id="python-projects">Python projects</h3>
+<p>depcurfew configures uv, Poetry, PDM, Pipenv and pip from the same <code>depcurfew.json</code>, and the bots for Python packages: Dependabot <code>pip</code> and <code>uv</code> entries and Renovate.</p>
+<ul>
+<li><strong>Detection.</strong> A Python tool counts as used when its lockfile is there, when <code>pyproject.toml</code> has its table, or when its own configuration file or a CI setup step shows it; <code>requirements.txt</code> means pip. <code>depcurfew explain</code> lists what it found.</li>
+<li><strong>Package names.</strong> Python packages on the policy&#39;s package lists (the cooldown exceptions and <code>installScripts.allow</code>) take the prefix <code>pypi:</code>, for example <code>&quot;pypi:docopt&quot;</code>. Names without a prefix stay npm names, so an exception for an npm package never applies to a Python package of the same name.</li>
+<li><strong>Install scripts are builds.</strong> A wheel installs without running package code; a source distribution, a git repository or a local directory is built, which runs its build code. <code>installScripts.default: &quot;deny&quot;</code> forbids building, and the packages in <code>installScripts.allow</code> are the exceptions. None of the three tools can only allow a build, so these packages are always built from source, even where a wheel exists; <code>apply</code> says so, and <code>doctor</code> lists the packages in the lockfile that would be built.</li>
+<li><strong>pip reads no project configuration.</strong> <code>apply</code> writes the build options into <code>requirements.txt</code>. The release-age delay cannot live in the project, so <code>apply</code> prints the environment variable to set where pip runs. <code>doctor</code> also checks the files a requirements file includes with <code>-r</code> and <code>-c</code>, and reports an include it cannot read.</li>
+<li><strong>Lock again after <code>apply</code>.</strong> <code>uv.lock</code> records the release-age delay, and PDM checks <code>pdm.lock</code> against all of its resolution settings, the delay and the build ban included. After <code>apply</code> changes them, <code>uv sync --locked</code> and <code>uv lock --check</code> fail until you run <code>uv lock</code>, and <code>pdm lock --check</code> and <code>pdm install --check</code> until you run <code>pdm lock</code>; <code>apply</code> says so (<code>lockfile-out-of-date</code>). <code>poetry.lock</code> and <code>Pipfile.lock</code> do not depend on the settings <code>apply</code> writes.</li>
+<li><strong>PDM and Pipenv cannot pin their own version.</strong> <code>apply</code> configures for the latest version depcurfew knows and names that version (<code>version-not-pinned</code>). Pipenv takes the delay in whole days only (rounded up), has no exceptions and no project setting that forbids building; <code>apply</code> says what to set where Pipenv runs instead. <code>doctor</code> reads <code>pdm.lock</code> and <code>Pipfile.lock</code>, and reports settings that turn the delay or the build ban off without a word: Pipenv&#39;s pure-Python resolver and PDM&#39;s uv mode.</li>
+<li><strong>Hatch has no settings of its own.</strong> Its environments install with uv or pip, so a Hatch project is covered by the uv configuration (add <code>&quot;uv&quot;</code> to <code>targets</code> when its environments use the uv installer) or by the environment variables of pip.</li>
+<li><strong>Running depcurfew.</strong> depcurfew is a Node.js program. In a project without <code>package.json</code>, run a pinned version with <code>npx --yes depcurfew@&lt;version&gt;</code>; in CI the <a href="#github-action">GitHub Action</a> needs nothing else.</li>
+</ul>
+<h2 id="doctor-rules">doctor rules</h2>
+<p>Findings have a level: an <strong>error</strong> makes <code>depcurfew doctor</code> exit with 1, a <strong>warning</strong> or a <strong>note</strong> does not. Things doctor could not check (a binary lockfile, a lockfile format without install-script data, a missing policy) are listed as notes after the findings, not as findings.</p>
+<h3 id="invalid-policy"><code>invalid-policy</code></h3>
+<p><strong>error</strong> · depcurfew.json does not follow the schema or cannot be read.</p>
+<p>Without a valid policy, the rules that compare the repository with depcurfew.json cannot run, so doctor runs only the rules that need no policy, as when there is no policy file.</p>
+<p>Fix: Fix what the message lists; an editor that reads the $schema of depcurfew.json shows the problems as you type.</p>
+<h3 id="manager-version-too-old"><code>manager-version-too-old</code></h3>
+<p><strong>error</strong> · A declared package manager version is older than a setting the repository relies on.</p>
+<p>Package managers ignore settings they do not know yet. When packageManager, devEngines, Volta, .tool-versions or a CI step pins an older version, the setting is silently not applied there.</p>
+<p>Fix: Raise the declared version to at least the version that introduced the setting, everywhere it is declared.</p>
+<h3 id="setting-ignored-by-version"><code>setting-ignored-by-version</code></h3>
+<p><strong>error</strong> · A setting or file is ignored by the package manager version in use.</p>
+<p>Package managers drop old settings and files in new major versions and only accept new forms from some version on. The configuration stays in the repository and looks effective while the version in use ignores it.</p>
+<p>Fix: Move the setting to the place and form this version reads.</p>
+<h3 id="npmrc-overrides-policy"><code>npmrc-overrides-policy</code></h3>
+<p><strong>error</strong> · An .npmrc file changes a security setting in a way the policy does not see, or is ignored.</p>
+<p>Package managers read .npmrc from different places with different priorities. npm ignores the .npmrc of workspace packages and the keys below a [section] header, and a before date in .npmrc takes the place of min-release-age; pnpm 10 applies a root .npmrc value whenever pnpm-workspace.yaml does not set the same setting, which can weaken the policy.</p>
+<p>Fix: Keep security settings out of .npmrc files that are ignored or that override the policy; set them through depcurfew.json and depcurfew apply.</p>
+<h3 id="pnpm-shared-workspace-lockfile"><code>pnpm-shared-workspace-lockfile</code></h3>
+<p><strong>warning</strong> · pnpm 10 without a shared lockfile lets a package .npmrc change the release-age delay.</p>
+<p>With sharedWorkspaceLockfile: false, pnpm 10 installs every workspace project separately with that project&#39;s own .npmrc layered over the workspace settings (read from the pnpm 10 source code), so a setting such as minimum-release-age=0 in a package .npmrc applies to that package.</p>
+<p>Fix: Remove security settings from package .npmrc files, or keep the default shared lockfile.</p>
+<h3 id="python-config-ignored"><code>python-config-ignored</code></h3>
+<p><strong>error</strong> · A Python tool ignores a setting where it is written.</p>
+<p>uv reads uv.toml instead of [tool.uv] when both exist, and in a workspace only the root; pip reads no configuration from the project and rejects options it does not know in requirements files; PDM in uv mode installs without only-binary; Pipenv with resolver_backend = &quot;pure-python&quot; locks without cool-down-period. A setting in such a place looks effective but is not, and an exclude-newer date freezes dependencies instead of delaying new versions.</p>
+<p>Fix: Move the setting to the file the tool reads.</p>
+<h3 id="config-drift"><code>config-drift</code></h3>
+<p><strong>error</strong> · needs depcurfew.json · A configuration file does not match what depcurfew apply writes for depcurfew.json.</p>
+<p>A generated setting was edited by hand, or depcurfew.json changed without running depcurfew apply, so the tools enforce something other than the policy.</p>
+<p>Fix: Run depcurfew apply (depcurfew apply --dry-run shows the difference), or change depcurfew.json if the edit was intended.</p>
+<h3 id="bot-cooldown-mismatch"><code>bot-cooldown-mismatch</code></h3>
+<p><strong>error</strong> · An update bot waits less than the package manager before proposing a new version.</p>
+<p>The bot then opens pull requests with versions the package manager would not pick yet: they fail to install where the manager re-checks the lockfile, or they bring in a version younger than the manager allows. Security updates that skip the bot delay fail the same way where the manager re-checks the lockfile. A Dependabot cooldown with an include list delays only the dependencies it names, and a Renovate packageRules entry can shorten the delay for a whole registry or update type.</p>
+<p>Fix: Give the bot a delay at least as long as the package manager&#39;s (depcurfew apply does this).</p>
+<h3 id="broad-exclusion"><code>broad-exclusion</code></h3>
+<p><strong>error</strong> · An exception list matches every package, or a per-scope setting shortens the delay, which turns the protection off.</p>
+<p>A release-age exception such as &quot;*&quot; (or a policy allow-list entry such as &quot;@*/*&quot;) looks like a narrow exception but exempts every package, so the delay or the install-script block never applies. The same goes for a Renovate packageRules entry that turns minimumReleaseAge off for a whole datasource, for major, minor or patch updates of every package, or with only negative patterns, which match every package they do not name. In Yarn 4.17 and later, npmScopes.&lt;scope&gt;.npmMinimalAgeGate replaces the delay for one scope, so a shorter value there exempts that scope.</p>
+<p>Fix: Replace the pattern with the packages or scopes that really need the exception.</p>
+<h3 id="lockfile-forbidden-source"><code>lockfile-forbidden-source</code></h3>
+<p><strong>error</strong> · needs depcurfew.json · The lockfile installs a package from a source depcurfew.json denies.</p>
+<p>A git repository, a tarball URL or a local path bypasses the registry and its checks (release age, provenance, integrity from the registry). The lockfile shows what installs really fetch, whatever the package manager settings say.</p>
+<p>Fix: Replace the dependency with a registry version, or allow that source in depcurfew.json.</p>
+<h3 id="lockfile-install-scripts"><code>lockfile-install-scripts</code></h3>
+<p><strong>error</strong> · needs depcurfew.json · The lockfile has packages with install scripts, or Python packages built from source, that depcurfew.json does not allow.</p>
+<p>Install scripts run arbitrary code during installation, and so does building a Python package from source (a source distribution, a git repository or a local directory). Where the package manager runs them by default, these packages execute code the policy does not allow; where it blocks them, they may not work without a build step. Only npm, Bun (1.4.4+) and Deno (lockfile v5) record install scripts in the lockfile; uv.lock, poetry.lock and pylock.toml show which Python packages have no wheel.</p>
+<p>Fix: Remove or replace the package, or add it to installScripts.allow in depcurfew.json after reviewing it (Python packages with the prefix pypi:).</p>
+<h3 id="unreadable-config"><code>unreadable-config</code></h3>
+<p><strong>error</strong> · A configuration file or lockfile cannot be read, parsed or edited, so depcurfew cannot check it.</p>
+<p>A package manager or bot may still read the file and its settings may weaken the policy; depcurfew fails closed and reports an error instead of passing silently.</p>
+<p>Fix: Fix what the message describes: invalid syntax, missing read permission, a symlink, a file over the size limit or a style depcurfew apply cannot edit.</p>
+<h2 id="github-action">GitHub Action</h2>
+<p>The action runs <code>depcurfew doctor</code>, prints the report to the job log, shows each finding as an annotation on its file and in a table in the job summary, each with how to fix it, uploads the SARIF report to code scanning and fails the job when doctor finds an error. It runs from its own checkout, with nothing to install, and sets up Node.js 22 only when the runner has an older version.</p>
+<p>Pin it to a full commit SHA, like every action in your workflows. If the repository cannot use code scanning, set <code>upload-sarif: false</code>; the findings stay in the job log.</p>
+<pre><code class="language-yaml">name: depcurfew
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write
+      # Only needed in private repositories:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DevXord/depcurfew@&lt;full-commit-sha&gt; # pin a commit, not a tag
+</code></pre>
+<div class="table"><table>
+<thead>
+<tr><th>Input</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>directory</code></td><td><code>.</code></td><td>Directory to check, relative to the workspace.</td></tr>
+<tr><td><code>sarif-file</code></td><td><code>depcurfew.sarif</code></td><td>Where to write the SARIF report, relative to the workspace; a path outside it works too.</td></tr>
+<tr><td><code>upload-sarif</code></td><td><code>true</code></td><td>Upload the SARIF report to GitHub code scanning. The job needs the security-events write permission.</td></tr>
+<tr><td><code>category</code></td><td><code>depcurfew</code></td><td>Code scanning category of the upload, to tell several depcurfew runs in one workflow apart.</td></tr>
+<tr><td><code>fail-on-error</code></td><td><code>true</code></td><td>Fail the step when doctor reports an error.</td></tr>
+<tr><td><code>annotations</code></td><td><code>true</code></td><td>Show the findings as annotations on the files, each with how to fix it. GitHub shows a limited number per step; the log lists every finding. Turn off when code scanning already shows them.</td></tr>
+<tr><td><code>job-summary</code></td><td><code>true</code></td><td>Add a table of the findings, each with how to fix it, to the job summary.</td></tr>
+</tbody>
+</table></div>
+<div class="table"><table>
+<thead>
+<tr><th>Output</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>errors</code></td><td>Number of findings with level error.</td></tr>
+<tr><td><code>warnings</code></td><td>Number of findings with level warning.</td></tr>
+<tr><td><code>notes</code></td><td>Number of findings with level note.</td></tr>
+<tr><td><code>sarif-file</code></td><td>Path of the SARIF report, relative to the workspace when it is inside it, otherwise absolute; empty when doctor could not run or the report could not be written.</td></tr>
+</tbody>
+</table></div>
+<h3 id="other-ci-systems">Other CI systems</h3>
+<p>The action works only on GitHub. On GitLab CI or any other CI, install the project&#39;s dependencies without running their install scripts, so nothing from the lockfile runs before doctor has checked it, then run the depcurfew version the lockfile pins; the job fails when doctor finds an error (exit code 1):</p>
+<pre><code class="language-yaml">depcurfew:
+  image: node:22
+  script:
+    - npm ci --ignore-scripts
+    - npx --no depcurfew doctor
+</code></pre>
+<p><code>--no</code> makes npx fail instead of downloading the latest depcurfew when the project does not have it; in CI npx otherwise downloads without asking. With pnpm, Yarn or Bun, use their frozen-lockfile install with install scripts turned off instead of <code>npm ci --ignore-scripts</code>.</p>
+<p><code>depcurfew doctor --json</code> and <code>--sarif</code> write the findings for other tools; set <code>FORCE_COLOR=1</code> if the CI log shows colors.</p>
+<h2 id="guarding-installs">Guarding installs</h2>
+<p>The configuration <code>apply</code> writes is what really protects a project: the package managers themselves wait out the release-age delay and refuse install scripts and sources the policy denies. <code>depcurfew check</code> adds a check before something is installed, which matters most for AI coding agents that add packages on their own:</p>
+<pre><code class="language-bash">npx depcurfew check zod@4 left-pad
+npx depcurfew check pypi:requests &quot;pypi:django&gt;=5.2,&lt;6&quot;
+</code></pre>
+<p>For each package it looks up the npm registry (the one <code>--registry</code> or <code>registry=</code> in <code>.npmrc</code> names, else the public one; any other is named in a note), or PyPI for names with the <code>pypi:</code> prefix, and reports:</p>
+<ul>
+<li>a name the registry does not know, which is how made-up package names show up;</li>
+<li>a version younger than the cooldown in <code>depcurfew.json</code>, with the newest version that is old enough;</li>
+<li>install scripts the policy does not allow; for a Python package, a version without wheels, which is built from source and so runs its build code;</li>
+<li>a name that differs by a letter or two, or only in separators, from a popular package of its registry: 5,000 npm packages with the most weekly downloads among the results of several hundred registry searches (the npm registry has no download ranking, so a popular package can be missing), and the 5,000 most downloaded PyPI projects of a recent month;</li>
+<li>a deprecated version (a warning);</li>
+<li>a registry or index reached over plain HTTP (a warning), unless it is on this computer (<code>localhost</code>, <code>127.0.0.0/8</code> or <code>::1</code>), such as a local registry for testing.</li>
+</ul>
+<p>A registry that redirects to another origin (another host, port or scheme, so also from <code>http://</code> to <code>https://</code> on the same host), and one at a link-local address, where cloud metadata services answer, is not followed or asked: the package counts as not checked. For a name without a version or with a range, npm prefers the dist-tag <code>tag=</code> in <code>.npmrc</code> names, and so does <code>check</code>.</p>
+<p>Python packages are written as pip takes them after the prefix (<code>pypi:name</code>, <code>pypi:name==1.2</code>, <code>pypi:name[extra]&gt;=1.2,&lt;2</code>), or as <code>pypi:name@1.2</code>, <code>pypi:name@^1.2</code> and <code>pypi:name@latest</code>, as <code>uvx</code> and <code>poetry add</code> take them. The version is picked as pip picks it: the newest match, pre-releases only when asked for or when nothing else matches, and yanked versions only when pinned with <code>==</code> (a warning). A version is as old as its newest file, because files can be added to a release later. A project PyPI quarantines (as malware, for example) is an error; an archived or deprecated one, a warning. <code>--index</code> looks Python packages up in another index that serves the JSON form of the simple repository API.</p>
+<p>Git repositories, tarball URLs and local paths are checked against the <code>sources</code> section only. Without a <code>depcurfew.json</code> in the directory or one of its parents up to the root of the repository, the default policy applies. When the registry cannot be reached, the package counts as failed: <code>check</code> exits with 1 whenever a package breaks the policy or cannot be checked. With <code>--json</code> it prints one document and nothing on stderr: <code>packages</code> with their findings (each with <code>code</code>, <code>level</code>, <code>message</code> and <code>fix</code>), <code>notices</code>, and <code>errors</code> for a <code>depcurfew.json</code> that cannot be used, in which case no package is checked.</p>
+<h3 id="claude-code">Claude Code</h3>
+<p><code>depcurfew check --hook claude-code</code> runs as a Claude Code hook before every command of the tools that run shell commands: Bash, PowerShell and Monitor. It finds the packages the command would install or download to run, checks them and answers:</p>
+<ul>
+<li><strong>deny</strong> when a package breaks the policy (Claude sees the reason and can pick another package or version);</li>
+<li><strong>ask</strong> when depcurfew cannot vouch for the command: a look-alike name, a registry it cannot reach, an error of its own, or a command it cannot read, such as one with <code>$(...)</code> or variables in its arguments, or a shell that runs commands from a pipe (<code>curl … | sh</code>);</li>
+<li>nothing when everything checks out, so the command goes through Claude Code&#39;s usual permission prompts.</li>
+</ul>
+<p>It follows the command lines inside a command: <code>$(...)</code> and backticks, <code>sh -c</code>, PowerShell&#39;s <code>-Command</code>, <code>cmd /c</code>, <code>eval</code>, <code>npx -c</code>, <code>yarn workspace &lt;name&gt;</code>, <code>python -m pip</code>, the command <code>uv run</code> runs, a package manager run by <code>npx</code>, <code>uvx</code> or <code>pipx run</code>, and wrappers such as <code>sudo</code>, <code>su -c</code>, <code>env</code>, <code>timeout</code>, <code>flock</code> and <code>xargs</code>. It reads options the way each tool does, including npm&#39;s and pnpm&#39;s shorthands and abbreviations (<code>--reg</code> and <code>--regis</code> for <code>--registry</code>), abbreviated long options of pip and pipx (<code>--extra</code> for <code>--extra-index-url</code>) and short options with their value in the same word (<code>-ihttps://…</code>), so an option, or a variable such as <code>PIP_INDEX_URL</code> or <code>UV_INDEX</code>, that points the tool at another index makes it ask. It checks the version the command would install: the dist-tag <code>--tag</code> or <code>npm_config_tag</code> makes npm prefer, pre-releases that <code>--pre</code>, <code>--prerelease allow</code> and the like allow, and builds from source that the command&#39;s options or variables force (wheels refused), which count as install scripts. A script piped into an interpreter (<code>curl … | python3</code>, <code>irm … | iex</code>) or read from <code>&lt;(curl …)</code> makes it ask, and so does a command with more than 50 packages, of which the first 50 are checked. <code>deno x</code> and <code>dx</code> are read like <code>npx</code>. Packages from requirements files (<code>pip install -r</code>) and the project&#39;s own files (<code>uv sync</code>, <code>poetry install</code>) are not checked, as with <code>npm install</code> without names; <code>depcurfew doctor</code> checks the lockfiles. When it cannot read the hook event at all, it exits with code 2, which blocks the command in every Claude Code version.</p>
+<p>It reads commands the way Windows runs them too: executables in any case and with <code>.exe</code>, <code>.cmd</code>, <code>.bat</code> or <code>.ps1</code> (<code>NPM.CMD i lodash</code>), paths with backslashes, and <code>cmd /c</code> or <code>cmd /k</code> (also <code>//c</code> from Git Bash), where <code>%VAR%</code> and <code>!VAR!</code> count as expansions. PowerShell commands (the PowerShell tool, <code>powershell -c</code>, <code>pwsh -c</code> and <code>iex</code>) are read like any other when they are plain commands: quotes, <code>;</code>, <code>|</code>, <code>&amp;&amp;</code>, the call operator <code>&amp;</code>, redirections and <code>$env:NAME = &quot;value&quot;</code> before a command. PowerShell syntax it does not read, such as variables, <code>(...)</code>, <code>$(...)</code>, <code>{...}</code>, <code>@(...)</code>, backticks, commas, <code>Start-Process</code> or <code>Set-Alias</code>, makes it ask when the same statement names a package manager; a statement without one, such as <code>Get-ChildItem | Where-Object { $_.Length -gt 1kb }</code>, goes through. It also asks about an argument with <code>&amp;</code>, <code>|</code>, <code>&lt;</code>, <code>&gt;</code> or <code>&quot;</code> for a package manager run from PowerShell, because the <code>.cmd</code> shim of a package manager hands its arguments to cmd.exe again.</p>
+<p>Install depcurfew as a development dependency of the project, then add the hook:</p>
+<p>In <code>.claude/settings.json</code> of the project:</p>
+<pre><code class="language-json">{
+  &quot;hooks&quot;: {
+    &quot;PreToolUse&quot;: [
+      {
+        &quot;matcher&quot;: &quot;Bash|PowerShell|Monitor&quot;,
+        &quot;hooks&quot;: [
+          {
+            &quot;type&quot;: &quot;command&quot;,
+            &quot;command&quot;: &quot;node&quot;,
+            &quot;args&quot;: [
+              &quot;${CLAUDE_PROJECT_DIR}/node_modules/depcurfew/dist/cli.js&quot;,
+              &quot;check&quot;,
+              &quot;--hook&quot;,
+              &quot;claude-code&quot;
+            ],
+            &quot;onFailure&quot;: &quot;block&quot;
+          }
+        ]
+      }
+    ]
+  }
+}
+</code></pre>
+<p>The matcher <code>Bash|PowerShell|Monitor</code> covers every tool that runs shell commands. On Windows, PowerShell is the main shell wherever the PowerShell tool is on, and without Git Bash there is no Bash tool, so a hook on <code>Bash</code> alone never runs there; Monitor runs a command in the background. <code>command</code> is <code>node</code> itself, which also starts on Windows, where Claude Code runs it without a shell.</p>
+<p><code>onFailure: &quot;block&quot;</code> needs Claude Code 2.1.295 or later; without it, a hook that fails to start, crashes or times out lets the command through.</p>
+<p>Commands the guard reads (an add subcommand of any npm package manager, such as <code>install</code> or <code>i</code>, is checked for all of them; Python commands are matched word for word, and <code>python -m pip</code> counts as <code>pip</code>):</p>
+<div class="table"><table>
+<thead>
+<tr><th>Package manager</th><th>Add packages</th><th>Download and run</th><th>Starter kits</th></tr>
+</thead>
+<tbody>
+<tr><td>npm</td><td><code>npm install</code>, <code>npm add</code>, <code>npm i</code>, <code>npm in</code>, <code>npm ins</code>, <code>npm inst</code>, <code>npm insta</code>, <code>npm instal</code>, <code>npm isnt</code>, <code>npm isnta</code>, <code>npm isntal</code>, <code>npm isntall</code>, <code>npm install-test</code>, <code>npm it</code></td><td><code>npx</code>, <code>npm exec</code>, <code>npm x</code></td><td><code>npm init</code>, <code>npm create</code>, <code>npm innit</code></td></tr>
+<tr><td>pnpm</td><td><code>pnpm add</code></td><td><code>pnx</code>, <code>pnpx</code>, <code>pnpm dlx</code></td><td><code>pnpm create</code></td></tr>
+<tr><td>Yarn (Berry)</td><td><code>yarn add</code></td><td><code>yarn dlx</code></td><td><code>yarn create</code></td></tr>
+<tr><td>Bun</td><td><code>bun add</code></td><td><code>bunx</code>, <code>bun x</code></td><td><code>bun create</code></td></tr>
+<tr><td>Deno</td><td><code>deno add</code>, <code>deno install</code></td><td><code>deno x</code>, <code>dx</code>, <code>denox</code>, <code>dnx</code></td><td>none</td></tr>
+<tr><td>uv</td><td><code>uv add</code>, <code>uv pip install</code>, <code>uv tool install</code></td><td><code>uvx</code>, <code>uv tool run</code>, <code>uv run</code></td><td>none</td></tr>
+<tr><td>pip</td><td><code>pip install</code>, <code>pip3 install</code></td><td>none</td><td>none</td></tr>
+<tr><td>pipx</td><td><code>pipx install</code></td><td><code>pipx run</code></td><td>none</td></tr>
+<tr><td>Poetry</td><td><code>poetry add</code></td><td>none</td><td>none</td></tr>
+<tr><td>PDM</td><td><code>pdm add</code></td><td>none</td><td>none</td></tr>
+<tr><td>Pipenv</td><td><code>pipenv install</code></td><td>none</td><td>none</td></tr>
+</tbody>
+</table></div>
+<p>The hook reads commands the way a shell splits them, but it is a safety net, not a sandbox: a command can install packages in ways it does not recognize (a script, another tool). Keep the package manager configuration from <code>depcurfew apply</code> in place; it is what enforces the policy for every install.</p>
+<h2 id="network-and-privacy">Network and privacy</h2>
+<p>Only <code>check</code> and the Claude Code hook use the network. For each package they request one URL with the package name in it: from the public npm registry (<code>registry.npmjs.org</code>) or PyPI (<code>pypi.org</code>), or from the registry that the project&#39;s or your <code>.npmrc</code> sets, <code>--registry</code> or <code>--index</code>. They send no credentials (tokens in <code>.npmrc</code> are not read, and a user name and password written into a registry URL are removed before the request and in every message) and nothing else about the project, and depcurfew has no telemetry. A private package whose scope has no registry in <code>.npmrc</code> is looked up in the public registry, so its name reaches that registry; set <code>@scope:registry</code> in <code>.npmrc</code> or pass <code>--registry</code> first. <code>init</code>, <code>explain</code>, <code>apply</code> and <code>doctor</code> work without network access, and so does the doctor step of the GitHub Action (the SARIF upload to code scanning is a separate step that runs GitHub&#39;s own action). An editor that reads the <code>$schema</code> of <code>depcurfew.json</code> may download the schema from unpkg.com.</p>
+<h2 id="library">Library</h2>
+<p>The same functions are available from the package: <code>detectProject</code>, <code>planApply</code> and <code>applyProject</code>, <code>runDoctor</code> with <code>toSarif</code>, <code>checkSpecs</code> with <code>scanCommandLine</code>, and the policy parser and converters. Their types ship in <code>dist/index.d.ts</code>, and <a href="https://github.com/DevXord/depcurfew/blob/v1.1.0/src/index.ts"><code>src/index.ts</code></a> lists every export. The package is an ES module only: use <code>import</code>; <code>require(&#39;depcurfew&#39;)</code> works on Node.js 22.12 and later, which load ES modules with <code>require()</code>.</p>
+<h2 id="contributing">Contributing</h2>
+<p>Facts about package managers live only in <a href="https://github.com/DevXord/depcurfew/tree/v1.1.0/src/knowledge"><code>src/knowledge/</code></a>, each with the official URL it was verified against and the date. A correction is welcome with a link to the official documentation or changelog. <code>npm test</code> builds the project and runs every test without network access.</p>
+<h2 id="license">License</h2>
+<p><a href="https://github.com/DevXord/depcurfew/blob/v1.1.0/LICENSE">MIT</a></p>
+<h2 id="trademarks">Trademarks</h2>
+<p>npm is a registered trademark of npm, Inc. &quot;Python&quot; and &quot;PyPI&quot; are trademarks of the Python Software Foundation. pnpm, Yarn, Bun, Deno, uv, pip, Poetry, PDM, Pipenv, Renovate, Dependabot, GitHub, Claude Code and the other names in this document belong to their owners. depcurfew is an independent project and is not affiliated with or endorsed by any of them.</p>
+</main>
+<footer class="site">
+<p>depcurfew 1.1.0 · from README.md, docs/knowledge.md and CHANGELOG.md at tag v1.1.0, built with <code>npm run site -- --versions</code> · <a href="https://github.com/DevXord/depcurfew/tree/v1.1.0">Source on GitHub</a> · MIT license</p>
+</footer>
+</body>
+</html>

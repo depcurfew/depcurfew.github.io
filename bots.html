@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Start with Renovate and Dependabot · depcurfew</title>
+<meta name="description" content="One supply-chain security policy for npm, pnpm, Yarn, Bun, Deno, uv, pip, Poetry, PDM, Pipenv, Composer, Renovate and Dependabot, plus a doctor that finds config that silently does nothing.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header class="site">
+<div class="bar">
+<a class="brand" href="index.html"><img src="favicon.svg" alt="" width="20" height="20">depcurfew</a>
+<nav aria-label="Pages">
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="npm.html">JavaScript</a></li>
+<li><a href="python.html">Python</a></li>
+<li><a href="php.html">PHP</a></li>
+<li><a href="bots.html" aria-current="page">Bots</a></li>
+<li><a href="policy.html">Policy</a></li>
+<li><a href="commands.html">Commands</a></li>
+<li><a href="codes.html">Codes</a></li>
+<li><a href="doctor.html">doctor rules</a></li>
+<li><a href="machine.html">Whole machine</a></li>
+<li><a href="tools.html">Tools</a></li>
+<li><a href="action.html">GitHub Action</a></li>
+<li><a href="check.html">Guarding installs</a></li>
+<li><a href="claude-code.html">Claude Code</a></li>
+<li><a href="mcp.html">MCP server</a></li>
+<li><a href="knowledge.html">Knowledge base</a></li>
+<li><a href="about.html">About</a></li>
+<li><a href="versions.html">Versions</a></li>
+</ul>
+</nav>
+</div>
+</header>
+<main id="content">
+<h1 id="start-with-renovate-and-dependabot">Start with Renovate and Dependabot</h1>
+<p>What the <a href="index.html">README</a> and the <a href="knowledge.html">knowledge base</a> say about these tools, on one page.</p>
+<h2 id="five-minute-start">Five-minute start</h2>
+<ol>
+<li><code>npx depcurfew init</code> writes <code>depcurfew.json</code> with the default policy below and lists the tools it detected. When the repository already sets a longer release-age delay for one of them, <code>cooldown.minimum</code> keeps the longest one, and <code>init</code> says where it found it.</li>
+<li><code>npx depcurfew explain</code> shows what it detected and what the policy means for each tool.</li>
+<li><code>npx depcurfew apply --dry-run</code> prints the changes as a diff, without writing anything.</li>
+<li><code>npx depcurfew apply</code> writes them. Run it again whenever <code>depcurfew.json</code> changes; a second run with the same policy changes nothing.</li>
+<li><code>npx depcurfew doctor</code> reports configuration that silently does not work and drift from the policy, and exits with 1 when it finds an error or, with the <code>&quot;doctor&quot;: { &quot;failOn&quot;: &quot;warning&quot; }</code> that <code>init</code> writes, a warning.</li>
+<li>Add the <a href="action.html#github-action">GitHub Action</a> so that doctor runs on every push and reports to code scanning.</li>
+</ol>
+<p>The default policy:</p>
+<pre><code class="language-json">{
+  &quot;$schema&quot;: &quot;https://unpkg.com/depcurfew/schema.json&quot;,
+  &quot;version&quot;: 1,
+  &quot;cooldown&quot;: {
+    &quot;minimum&quot;: &quot;3d&quot;,
+    &quot;exclude&quot;: [],
+    &quot;securityUpdates&quot;: &quot;bypass&quot;
+  },
+  &quot;installScripts&quot;: {
+    &quot;default&quot;: &quot;deny&quot;,
+    &quot;allow&quot;: [],
+    &quot;deny&quot;: []
+  },
+  &quot;sources&quot;: {
+    &quot;git&quot;: &quot;deny&quot;,
+    &quot;remoteTarball&quot;: &quot;deny&quot;,
+    &quot;file&quot;: &quot;allow&quot;,
+    &quot;directory&quot;: &quot;allow&quot;
+  },
+  &quot;targets&quot;: &quot;auto&quot;,
+  &quot;doctor&quot;: {
+    &quot;failOn&quot;: &quot;warning&quot;
+  }
+}
+</code></pre>
+<h2 id="supported-tools">Supported tools</h2>
+<div class="table"><table>
+<thead>
+<tr><th>Tool</th><th>Release-age delay</th><th>Exceptions</th><th>Install-script allow-list (Python: packages built from source; Composer: plugins)</th><th>Dependency sources</th><th>Verified</th></tr>
+</thead>
+<tbody>
+<tr><td>Renovate</td><td><code>minimumReleaseAge</code> in <code>renovate.json</code>, <code>renovate.jsonc</code> … (duration string), since 35.46.0</td><td><code>packageRules: matchPackageNames + minimumReleaseAge: null</code>, since 35.46.0 ❓</td><td>none</td><td>n/a</td><td>2026-10-28 – 2026-11-02</td></tr>
+<tr><td>Dependabot</td><td><code>cooldown</code> in <code>.github/dependabot.yml</code>, <code>.github/dependabot.yaml</code> (days), since 2025 07 01</td><td><code>cooldown.exclude</code>, since 2025 07 01 ❓</td><td>none</td><td>n/a</td><td>2026-10-28 – 2026-11-02</td></tr>
+</tbody>
+</table></div>
+<p>⚠️ official sources disagree (depcurfew takes the safer reading) · ❓ official sources are incomplete. Every value with its source: <a href="knowledge.html">docs/knowledge.md</a>.</p>
+<h2 id="doctor-rules-for-these-tools">doctor rules for these tools</h2>
+<h3 id="bot-cooldown-mismatch"><code>bot-cooldown-mismatch</code></h3>
+<p><strong>error</strong> · An update bot waits less than the package manager, or for the actions of workflows less than the policy, before proposing a new version.</p>
+<p>The bot then opens pull requests with versions the package manager would not pick yet: they fail where the manager re-checks the lockfile or bring in younger versions, and security updates that skip the bot delay fail too. A Dependabot cooldown with an include list delays only the dependencies it names; a Renovate packageRules entry can shorten the delay for a registry, manager, category, update type or the files and depType of actions, and one with a matcher depcurfew cannot read gets a note. For the actions of workflows the bot must wait cooldown.minimum. An unreadable bot file, a JSON5 Renovate file or a Dependabot file with a YAML alias gets a note per package manager that waits. With projects, a bot file inside a project gets a note (bots read only the root&#39;s), and a project the root&#39;s Dependabot configuration leaves out while it updates others gets a warning. A Dependabot composer entry gets a note: it counts from the release time the author sets.</p>
+<p>Fix: Give the bot a delay at least as long as the package manager&#39;s, and for the actions of workflows as long as cooldown.minimum (depcurfew apply does this).</p>
+<p>Every rule: <a href="doctor.html">doctor rules</a>.</p>
+<h2 id="sources">Sources</h2>
+<p>Every fact behind these tables, with its official source, is in the knowledge base: <a href="knowledge.html#renovate">Renovate</a>, <a href="knowledge.html#dependabot">Dependabot</a>.</p>
+</main>
+<footer class="site">
+<p>depcurfew 1.4.0 · built from README.md and src/knowledge/ with <code>npm run site</code> · <a href="https://github.com/DevXord/depcurfew">Source on GitHub</a> · MIT license</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Warnings and errors of init and apply · depcurfew</title>
+<meta name="description" content="One supply-chain security policy for npm, pnpm, Yarn, Bun, Deno, uv, pip, Poetry, PDM, Pipenv, Composer, Renovate and Dependabot, plus a doctor that finds config that silently does nothing.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header class="site">
+<div class="bar">
+<a class="brand" href="index.html"><img src="favicon.svg" alt="" width="20" height="20">depcurfew</a>
+<nav aria-label="Pages">
+<ul>
+<li><a href="index.html">Overview</a></li>
+<li><a href="npm.html">JavaScript</a></li>
+<li><a href="python.html">Python</a></li>
+<li><a href="php.html">PHP</a></li>
+<li><a href="bots.html">Bots</a></li>
+<li><a href="policy.html">Policy</a></li>
+<li><a href="commands.html">Commands</a></li>
+<li><a href="codes.html" aria-current="page">Codes</a></li>
+<li><a href="doctor.html">doctor rules</a></li>
+<li><a href="machine.html">Whole machine</a></li>
+<li><a href="tools.html">Tools</a></li>
+<li><a href="action.html">GitHub Action</a></li>
+<li><a href="check.html">Guarding installs</a></li>
+<li><a href="claude-code.html">Claude Code</a></li>
+<li><a href="mcp.html">MCP server</a></li>
+<li><a href="knowledge.html">Knowledge base</a></li>
+<li><a href="about.html">About</a></li>
+<li><a href="versions.html">Versions</a></li>
+</ul>
+</nav>
+</div>
+</header>
+<main id="content">
+<h1 id="warnings-and-errors-of-init-and-apply">Warnings and errors of init and apply</h1>
+<h2 id="init-warnings-and-notes">init warnings and notes</h2>
+<p><code>depcurfew init</code> says what it wrote and, as warnings and notes with a code, what to look at before <code>depcurfew apply</code>: the projects it listed, a directory it left out of them, the delay it kept and what the default policy blocks. The text, on stdout, shows each with its level word, the message with its code in parentheses and what to do on the next line. <code>depcurfew init --json</code> (also with <code>--user</code>) prints one JSON document and nothing on stderr: <code>policy</code> (the file written, as the text names it; <code>null</code> when the directory does not exist or the home directory cannot be used), <code>written</code>, <code>action</code> (<code>create</code> or <code>overwrite</code>, <code>null</code> when nothing was written), <code>projects</code>, <code>tools</code> (each detected tool with <code>tool</code>, <code>name</code>, <code>directory</code> and <code>supported</code>; <code>null</code> with <code>--user</code>, which detects none), <code>warnings</code> and <code>notices</code> (each with <code>code</code>, <code>level</code>, <code>location</code> with <code>file</code> and, when known, <code>line</code>, <code>message</code> and <code>fix</code>; paths relative to the directory init works on, under <code>~/</code> with <code>--user</code>) and <code>errors</code>, why nothing was written, with the codes of <code>apply</code> (<code>policy-exists</code>, <code>cannot-write</code>, <code>directory-not-found</code>, <code>not-a-directory</code>, <code>home-missing</code>). The exit codes are those of the text: <code>0</code> written (warnings and notes included), <code>1</code> not written (the file exists without <code>--force</code>, it cannot be written, or with <code>--user</code> the home directory cannot be used), <code>2</code> a usage error or a directory that does not exist.</p>
+<p>Install scripts: <code>init</code> reads the lockfiles (<code>package-lock.json</code>, <code>pnpm-lock.yaml</code>, <code>yarn.lock</code>, <code>bun.lock</code>, <code>deno.lock</code>, as <code>lockfile-install-scripts</code> reads them) and writes the packages whose scripts depcurfew knows into <code>installScripts.deny</code>, each with a note that says why and what changes (<code>install-script-denied</code>, <code>install-script-project-task</code>). esbuild works without its <code>postinstall</code> as long as optional dependencies are installed, which hold its binary (without the script the <code>esbuild</code> command starts through a small Node.js script instead of the binary); fsevents loses nothing, since the package already contains the built <code>fsevents.node</code>; lefthook&#39;s <code>postinstall</code> only runs <code>lefthook install</code>, which installs the git hooks (and does nothing in CI), and the note says to run <code>lefthook install</code> after each clone of the repository, as the lefthook documentation says for projects that do not use its <code>postinstall</code> script (depcurfew never edits <code>scripts</code>). These notes are given for a package from a registry only: a package of the same name from git, a URL or a local path, or an entry whose <code>resolved</code> URL is the tarball of another package, is listed with the other packages to review. Each fact names the release it was checked at, and a note says so when the lockfile has another one. The other packages with install scripts are listed in a note to review (<code>install-scripts-to-review</code>), and a lockfile that does not record install scripts (<code>pnpm-lock.yaml</code>, <code>yarn.lock</code>) gets a note too (<code>install-scripts-not-recorded</code>).</p>
+<p>Warnings:</p>
+<ul>
+<li><code>project-left-out</code>: A direct subdirectory with a manifest or lockfile is left out of projects, because depcurfew apply would refuse it (it has a depcurfew.json of its own, or it is a separate git repository).</li>
+</ul>
+<p>Notes:</p>
+<ul>
+<li><code>projects-listed</code>: The repository root has no manifest or lockfile, but direct subdirectories do, so init lists them under projects in depcurfew.json.</li>
+<li><code>cooldown-kept</code>: The repository (with --user, the user file of an installed tool) already sets a longer release-age delay, so cooldown.minimum keeps it instead of the default.</li>
+<li><code>python-builds-denied</code>: installScripts.default &quot;deny&quot; also blocks building Python packages from source, so a package without wheels for the platform stops installing until it is allowed.</li>
+<li><code>tool-only-in-ci</code>: A tool appears only in a CI setup step, so depcurfew apply does not configure it under targets &quot;auto&quot;.</li>
+<li><code>install-script-denied</code>: A lockfile has a package whose install script depcurfew knows it does not need (esbuild, fsevents), so init adds it to installScripts.deny; the note says what changes without the script.</li>
+<li><code>install-script-project-task</code>: A lockfile has a package whose install script only does a task of the project (lefthook installs the git hooks), so init adds it to installScripts.deny; the fix says how the project runs that task itself.</li>
+<li><code>install-scripts-to-review</code>: A lockfile has other packages with install scripts, or composer.lock has Composer plugins (the note says which ones allow-plugins in composer.json already allows), which installScripts.default &quot;deny&quot; blocks; review each before depcurfew apply.</li>
+<li><code>install-scripts-not-recorded</code>: A lockfile does not record which packages have install scripts (pnpm-lock.yaml, yarn.lock), or is in a format depcurfew does not read, so init can name only the packages depcurfew knows.</li>
+</ul>
+<h2 id="apply-warnings-and-errors">apply warnings and errors</h2>
+<p>Each warning and error of <code>apply</code> has a code. The text output shows it in parentheses after the message, with what to do on the next line, like a doctor finding. <code>depcurfew apply --json</code> (also with <code>--dry-run</code>) prints one JSON document and nothing on stderr: <code>changes</code> (each file with its action and unified diff), <code>warnings</code> and <code>errors</code> (each with <code>code</code>, <code>level</code>, <code>message</code> and <code>fix</code>; <code>tool</code> when it concerns one tool; <code>location</code> when it concerns one file, with <code>file</code> and, when known, <code>line</code>; for an invalid policy also <code>issues</code>), <code>snippets</code> to add by hand, <code>notices</code> (such as <code>policy-from-parent</code>) and <code>written</code>. A run that writes nothing because of an error lists no changes and exits with 1. Diffs, on the terminal, in a pipe and in <code>changes</code>, show the values of secrets as <code>&lt;redacted&gt;</code> (<code>_authToken</code>, <code>_auth</code>, <code>_password</code> and the client key <code>key</code> in <code>.npmrc</code>, keys ending in <code>token</code> or <code>password</code>, the user and password of a URL), so that a diff can be shared or logged; the files keep them. The text diff also shows control and bidirectional characters from the files as text (<code>\x1b</code>, <code>‮</code>), so that a value cannot drive the terminal or a CI log; <code>changes</code> keeps them, escaped by JSON.</p>
+<p>Warnings:</p>
+<ul>
+<li><code>nothing-to-configure</code>: depcurfew found no supported package manager or bot, so nothing is configured.</li>
+<li><code>environment-overrides</code>: apply --user: an environment variable makes a tool read another user file or none, or overrides a value apply writes there.</li>
+<li><code>depcurfew-outdated</code>: The project installs a newer depcurfew than the one running, which may not know settings that version writes.</li>
+<li><code>file-unreadable</code>: A file that shows which tools a project uses cannot be read or parsed (too large, a symlink out of the repository, no read permission, invalid), so depcurfew may configure fewer tools than the project uses.</li>
+<li><code>tool-not-supported</code>: A detected or installed tool is not supported (Yarn Classic), so nothing is written for it.</li>
+<li><code>target-not-found</code>: With projects, a package manager listed under targets is configured in each directory (the root or a project) that uses it, and none uses it, so nothing is written for it.</li>
+<li><code>tool-only-in-ci</code>: A tool appears only in a CI setup step, with no manifest, lockfile or configuration in the repository, so targets &quot;auto&quot; does not configure it.</li>
+<li><code>version-not-pinned</code>: No exact version of a package manager is pinned, so depcurfew configures for the latest version it knows.</li>
+<li><code>version-too-old</code>: The pinned version of a tool (with apply --user, the installed one) lacks a setting the policy needs, so that setting is not written.</li>
+<li><code>version-unknown</code>: apply --user: the installed version of a tool cannot be read from its files, and a value it does not understand would stop every command, so nothing is written for it.</li>
+<li><code>no-user-config</code>: apply --user: the tool has no user-level configuration file, so nothing is written for it.</li>
+<li><code>user-setting-project-only</code>: apply --user: the tool reads a part of the policy only from project files, so it is not written into the user file.</li>
+<li><code>user-directory-relative</code>: apply --user: the environment variable that names the directory of the user file (XDG_CONFIG_HOME, APPDATA) is a relative path, so the tool looks in another place from each directory, or where it looks then is not known; nothing is written for it.</li>
+<li><code>user-file-uncertain</code>: apply --user: a library the tool calls decides where its user file is (platformdirs for Poetry and PDM on macOS), and its version cannot be read from files, so apply --user writes where the tool&#39;s docs say and names the other files the tool may read.</li>
+<li><code>user-setting-overridden</code>: apply --user: a file the tool reads ahead of its user file (~/.npmrc for pnpm 10) sets a key apply writes there to another value, so the value written has no effect.</li>
+<li><code>version-not-used</code>: apply --user: --for gives the version of a tool that apply --user does not configure (not in PATH with targets &quot;auto&quot;, or not listed under targets).</li>
+<li><code>cooldown-not-written</code>: The release-age delay cannot be written for a tool.</li>
+<li><code>cooldown-shortened</code>: A release-age delay set outside depcurfew&#39;s markers (in JSON files also one an earlier apply wrote) is longer than the policy, and apply replaces it with the shorter one.</li>
+<li><code>cooldown-environment-only</code>: pip reads no project configuration, so the release-age delay has to be set in the environment where pip runs.</li>
+<li><code>exclude-pattern-unsupported</code>: A cooldown exception uses a wildcard the tool does not support, so it is not written.</li>
+<li><code>exclude-unsupported</code>: The tool has no setting for cooldown exceptions, so the release-age delay applies to every package.</li>
+<li><code>exclude-not-written</code>: The setting that holds the cooldown exceptions (Composer&#39;s config.policy.cooldown.ignore) has a value of a type the tool does not accept there, so apply leaves it as it is and does not add the exceptions; the release-age delay is written.</li>
+<li><code>exclude-entry-outside-policy</code>: A cooldown exception in a file without depcurfew&#39;s markers (Composer&#39;s config.policy.cooldown.ignore) exempts a package that cooldown.exclude does not; apply removes only the entries it wrote, recognised by their reason, and leaves this one.</li>
+<li><code>allow-pattern-unsupported</code>: An installScripts.allow entry is a pattern, but the tool takes package names only, so it is not written.</li>
+<li><code>deny-pattern-unsupported</code>: An installScripts.deny entry is a pattern, but the tool records denials by package name only, so it is not written.</li>
+<li><code>allow-all-unsupported</code>: The tool has no setting that allows every install script, so installScripts &quot;allow&quot; is not written.</li>
+<li><code>allow-all-replaced</code>: A setting that allowed every install script (with any value the tool reads as true, also one that a YAML merge key brings in, or pnpm 10&#39;s dangerously-allow-all-builds in .npmrc) was set to false, or replaced with the policy&#39;s allow-list where the setting is the list itself (Deno&#39;s allowScripts, Composer&#39;s allow-plugins, which then may be {}), because the policy denies install scripts.</li>
+<li><code>allow-list-entry-outside-policy</code>: An install-script allow-list in the repository (with apply --user, in a user file) lets a package run scripts the policy does not allow; apply does not remove it.</li>
+<li><code>deny-conflicts-with-file</code>: An entry in a tool&#39;s own list lets a package of installScripts.deny run its install scripts, or blocks a package of installScripts.allow; apply does not change entries it did not write.</li>
+<li><code>deny-needs-optional-dependencies</code>: A package of installScripts.deny takes its binary from an optional dependency (esbuild), but npm leaves optional dependencies out (omit=optional or optional=false in .npmrc, --omit=optional or --no-optional on an install of a CI job or Dockerfile, NPM_CONFIG_OMIT=optional), so the package cannot find its binary after that install.</li>
+<li><code>unexpected-value</code>: A setting apply adds to has a value of a type the tool does not accept there, so apply leaves it as it is and writes nothing into it.</li>
+<li><code>built-in-list-replaced</code>: Bun&#39;s built-in list of trusted packages is replaced by the policy&#39;s allow-list.</li>
+<li><code>scripts-not-enforceable</code>: The pinned (with apply --user, the installed) npm or pnpm, or another npm the repository runs (one a declared Node.js comes with, or a CI job or Dockerfile installs), runs every install script and has no allow-list, so &quot;deny&quot; cannot be enforced; also given for an npm the repository runs whose version depcurfew cannot tell, which counts as one that runs them.</li>
+<li><code>strict-allow-scripts-for-npm-in-use</code>: An npm the repository runs (the pinned one, one a CI job or Dockerfile installs, or one a declared Node.js comes with, for a project also through the root version files and root Dockerfiles that build it) is 11.16 to 11.x and runs install scripts the allow-list does not cover unless strict-allow-scripts is set, so apply writes strict-allow-scripts=true, which makes npm 12 stop the install at such a script; not given when that npm is the pinned one and no place runs npm 12.</li>
+<li><code>before-overrides-cooldown</code>: before= in .npmrc takes the place of the release-age delay apply writes, or makes npm stop with an error next to it (apply --user then does not write the delay).</li>
+<li><code>exact-version-gap</code>: The pinned (with apply --user, the installed) pnpm skips the release-age delay for packages requested by exact version.</li>
+<li><code>source-not-enforceable</code>: The tool has no setting for a dependency source the policy denies; doctor checks the lockfile instead.</li>
+<li><code>source-switch-indirect-only</code>: The pnpm setting for git and tarball sources stops them only for indirect dependencies.</li>
+<li><code>source-switch-combined</code>: One pnpm setting covers git and tarball sources, so denying one denies both.</li>
+<li><code>forced-source-build</code>: Python packages on the allow-list are always built from source, because no tool can only allow a build.</li>
+<li><code>build-switch-scope</code>: The tool&#39;s switch forbids building only packages from an index; git, local and archive dependencies are still built.</li>
+<li><code>build-switch-install-only</code>: Poetry applies its build switch when installing; poetry lock may still build source distributions.</li>
+<li><code>build-switch-environment-only</code>: The tool has no project setting that forbids building from source, so it has to be set in the environment where the tool runs.</li>
+<li><code>requirements-file-missing</code>: There is no requirements file to write pip options into.</li>
+<li><code>manifest-missing</code>: A setting belongs in a project manifest (package.json, deno.json, pyproject.toml, Pipfile, composer.json) that does not exist, and apply does not create manifests.</li>
+<li><code>lockfile-out-of-date</code>: The lockfile records, or is checked against, a setting apply changed, so it has to be locked again.</li>
+<li><code>file-ignored-by-git</code>: A file apply writes matches a .gitignore rule, so the change may never reach the repository.</li>
+<li><code>bot-config-missing</code>: A bot has no configuration file, and depcurfew does not create one.</li>
+<li><code>bot-config-not-edited</code>: A bot configuration file is in a place or format depcurfew does not edit; a snippet shows what to add.</li>
+<li><code>bot-entries-missing</code>: The Dependabot configuration has no entries for the package managers in use.</li>
+<li><code>bot-rule-shortens-delay</code>: A Renovate packageRules entry apply does not manage gives every package of a registry, Renovate manager or category in use, or the actions of the workflows, or some update types of them, a shorter release-age delay than the one apply writes; Renovate uses it, and apply does not change it.</li>
+<li><code>security-delay-unsupported</code>: Dependabot cannot delay security updates, so securityUpdates &quot;delay&quot; is not applied.</li>
+</ul>
+<p>Errors (nothing is written):</p>
+<ul>
+<li><code>cannot-edit</code>: A file cannot be read or edited safely (invalid syntax, a symlink, a style depcurfew does not edit), so nothing is written.</li>
+<li><code>cannot-write</code>: A file cannot be written (no permission, a read-only file system, a full disk, a directory or symlink in its place); the files already written are put back, so nothing changes.</li>
+<li><code>policy-missing</code>: The directory has no depcurfew.json.</li>
+<li><code>policy-invalid</code>: depcurfew.json does not follow the schema; issues lists the problems.</li>
+<li><code>policy-unreadable</code>: depcurfew.json cannot be read.</li>
+<li><code>policy-exists</code>: depcurfew init found a depcurfew.json and writes it only with --force.</li>
+<li><code>directory-not-found</code>: The directory given on the command line does not exist or cannot be opened.</li>
+<li><code>not-a-directory</code>: The path given on the command line is a file, not a directory.</li>
+<li><code>usage</code>: The command line is not valid: an unknown command, option or hook, a missing or extra argument, an option without its value or with one it does not take (such as a --registry that is not an http:// or https:// URL), or options that cannot go together (exit code 2); with --json the document holds only schemaVersion and this error.</li>
+<li><code>project-not-found</code>: A directory listed in projects in depcurfew.json does not exist, so nothing is written.</li>
+<li><code>project-not-a-directory</code>: A path listed in projects in depcurfew.json is a file, not a directory, so nothing is written.</li>
+<li><code>project-symlink</code>: A directory listed in projects in depcurfew.json is a symlink or lies under one, which may lead out of the repository, so nothing is written.</li>
+<li><code>project-has-policy</code>: A directory listed in projects has a depcurfew.json of its own, a second policy for the same files, so nothing is written.</li>
+<li><code>project-is-repository</code>: A directory listed in projects is a separate git repository or lies in one (it has a .git of its own, as a git submodule does), whose files belong to that repository, so nothing is written.</li>
+<li><code>project-in-workspace</code>: A directory listed in projects is, holds or lies in a workspace package of the repository root, which the root configuration already covers, so nothing is written.</li>
+<li><code>home-missing</code>: apply --user and init --user: the home directory (HOME, USERPROFILE on Windows) does not exist or is not an absolute path, so nothing is written.</li>
+</ul>
+</main>
+<footer class="site">
+<p>depcurfew 1.4.0 · built from README.md and src/knowledge/ with <code>npm run site</code> · <a href="https://github.com/DevXord/depcurfew">Source on GitHub</a> · MIT license</p>
+</footer>
+</body>
+</html>
